@@ -1,0 +1,9 @@
+build/
+dist/
+__pycache__/
+*.pyc
+*.pyo
+*.spec
+lia_historial.json
+.venv
+.venv/
