@@ -7,3 +7,11 @@ __pycache__/
 lia_historial.json
 .venv
 .venv/
+.idea/
+
+# Python
+
+# PyInstaller
+
+# IDE
+.vscode/
