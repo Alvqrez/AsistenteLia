@@ -1,301 +1,475 @@
 #!/usr/bin/env python3
-# Asistente Lia v3.0 - Arquitectura Modular (Bloque 1)
+"""
+Lia.py  –  Cerebro del asistente
+Responsabilidades ÚNICAS de este archivo:
+  · Inicializar todos los módulos y conectarlos entre sí
+  · Gestionar TTS (hablar)
+  · Escuchar comandos de voz y parsearlos (_parse_command)
+  · Arrancar el loop de detección de aplausos
+  · Exponer registrar_actividad() para que los módulos lo usen
 
-from mod_internet import ModuloInternet
-from mod_memoria import ModuloMemoria
-from mod_sistema import ModuloSistema
-from mod_dev import ModuloDev
+Todo lo demás vive en los módulos:
+  mod_audio   → análisis de señal + detección de aplausos
+  mod_sistema → apps, URLs, modos de trabajo, sistema operativo
+  mod_memoria → pendientes, notas, historial, pomodoro, recordatorios
+  mod_internet→ clima, rutina de inicio, búsquedas web
+  mod_dev     → git, herramientas de programación
+"""
 
-import numpy as np
-import sounddevice as sd
-import speech_recognition as sr
-import pyttsx3
-import subprocess
-import platform
-import time
-import threading
-import datetime
 import os
-import random
-import glob
-from collections import deque
+import sys
+import threading
+import time
 
-# Importar los nuevos módulos
-from mod_internet import ModuloInternet
-from mod_memoria import ModuloMemoria
+import pyttsx3
+import speech_recognition as sr
+
+# ── Módulos de Lia ───────────────────────────────────────────
+from mod_audio   import ClapDetector
+from mod_sistema import SystemTools
+from mod_memoria import MemoryTools
+from mod_internet import InternetTools
+from mod_dev     import DevTools
+
+# ── Rutas ────────────────────────────────────────────────────
+_SRC_DIR          = os.path.dirname(os.path.abspath(__file__))
+_ROOT_DIR         = os.path.dirname(_SRC_DIR)
+COMANDOS_TXT_PATH = os.path.join(_ROOT_DIR, "lia_comandos.txt")
 
 
 class LiaAssistant:
+
+    # ════════════════════════════════════════════════════════
+    #  INICIALIZACIÓN
+    # ════════════════════════════════════════════════════════
+
     def __init__(self):
-        self.is_active = True
+        self.is_active       = True
+        self._shutdown_flag  = threading.Event()
+
+        # ── TTS ───────────────────────────────────────────────
+        self.lia_hablando    = False
+        self.modo_silencioso = False
+        self._tts_lock       = threading.Lock()
+        self._init_tts()
+
+        # ── Reconocimiento de voz ─────────────────────────────
         self.recognizer = sr.Recognizer()
         self.microphone = sr.Microphone()
-        self.lia_hablando = False
-        self.modo_silencioso = False
-        self.ultimo_modo = None
 
-        # --- INICIALIZAR MÓDULOS ---
-        # Le pasamos la función self.hablar para que los módulos tengan voz
-        self.internet = ModuloInternet(self.hablar)
-        self.memoria = ModuloMemoria(self.hablar)
-        self.sistema = ModuloSistema(self.hablar)
-        self.dev = ModuloDev(self.hablar)
+        self.recognizer.pause_threshold = 1.1  # Espera un poco más entre palabras
+        self.recognizer.non_speaking_duration = 0.6  # Tiempo de silencio antes de procesar
+        self.recognizer.dynamic_energy_threshold = True
 
-        # --- CONFIGURACIÓN DE VOZ (TTS) ---
-        self.engine = pyttsx3.init()
-        self.engine.setProperty('rate', 175)
+        # ── Módulos (se pasan 'self' como parent_lia) ─────────
+        self.sistema  = SystemTools(self)
+        self.memoria  = MemoryTools(self)
+        self.internet = InternetTools(self)
+        self.dev      = DevTools(self)
 
-        # --- CALIBRACIÓN DE AUDIO ---
-        self.sample_rate = 44100
-        self.clap_threshold = 0.08
-        self.crest_factor_min = 2.8
-        self.crest_factor_max = 28.0
-        self.min_high_freq_ratio = 0.20
-        self.max_zcr = 0.50
-        self.clap_duration_max = 0.15
-        self.clap_cooldown = 0.12
-        self.clap_window = 2.5
-        self.sequence_gap = 0.85
+        # Inyectar shutdown_flag en mod_memoria para hilos de pomodoro
+        self.memoria._shutdown_flag = self._shutdown_flag
 
-        self.clap_events = deque(maxlen=20)
-        self.last_clap_time = 0.0
-        self.noise_floor = 0.0
-        self.calibrando = True
+        # ── Detector de aplausos ──────────────────────────────
+        self.detector = ClapDetector(
+            on_sequence=self._handle_clap_sequence
+        )
 
-        self.calibrar_ruido_ambiente()
-        self.hablar("Hola. Sistemas modulares en línea.")
+        # ── Arranque ─────────────────────────────────────────
+        self.detector.calibrar()
+        self._generar_txt_comandos()
+        self.hablar("Hola, aquí estoy.")
+        self.mostrar_menu()
 
-        # Activar recordatorios automáticos al iniciar
-        self.memoria.recordar_pendientes_activos()
+    # ════════════════════════════════════════════════════════
+    #  TTS
+    # ════════════════════════════════════════════════════════
 
-    def calibrar_ruido_ambiente(self):
-        print("🎤 Calibrando ruido ambiente (mantén silencio 2 segundos)...")
+    def _init_tts(self):
+        """Inicializa el engine TTS una sola vez para toda la sesión."""
         try:
-            recording = sd.rec(int(2 * self.sample_rate), samplerate=self.sample_rate, channels=1, dtype='float32')
-            sd.wait()
-            self.noise_floor = np.abs(recording).max()
-            self.clap_threshold = max(0.28, self.noise_floor * 3.5)
-            print(f"✅ Calibración completa.")
-            self.calibrando = False
-        except Exception:
-            self.calibrando = False
+            self.tts_engine = pyttsx3.init('sapi5')
+            self.tts_engine.setProperty('rate', 175)
+            for v in self.tts_engine.getProperty('voices'):
+                if "spanish" in v.name.lower() or "mexico" in v.name.lower():
+                    self.tts_engine.setProperty('voice', v.id)
+                    break
+        except Exception as e:
+            print(f"⚠️  Error al iniciar TTS: {e}")
+            self.tts_engine = None
 
-    def hablar(self, texto):
-        print(f"🗣️ Lia: {texto}")
-        if self.modo_silencioso: return
-
+    def hablar(self, texto: str):
+        """Reproduce texto en voz. Respeta modo silencioso."""
+        print(f"🗣️  Lia: {texto}")
+        if self.modo_silencioso or self.tts_engine is None:
+            return
         try:
             self.lia_hablando = True
-            engine = pyttsx3.init('sapi5')
-            engine.setProperty('rate', 175)
-            for voice in engine.getProperty('voices'):
-                if "spanish" in voice.name.lower() or "mexico" in voice.name.lower():
-                    engine.setProperty('voice', voice.id)
-                    break
-            engine.say(texto)
-            engine.runAndWait()
-            engine.stop()
-            time.sleep(0.2)
-        except Exception:
-            pass
+            self.detector.set_lia_hablando(True)   # suprime falsos aplausos
+            with self._tts_lock:
+                self.tts_engine.say(texto)
+                self.tts_engine.runAndWait()
+            time.sleep(0.15)
+        except Exception as e:
+            print(f"❌ Error de voz: {e}")
+            self._init_tts()
         finally:
             self.lia_hablando = False
+            self.detector.set_lia_hablando(False)
 
-    # --- LÓGICA DE APLAUSOS (Mantenida intacta) ---
-    def zcr_rate(self, audio_data):
-        return np.sum(np.abs(np.diff(np.sign(audio_data)))) / len(audio_data)
+    # ════════════════════════════════════════════════════════
+    #  HISTORIAL  (delegado a mod_memoria)
+    # ════════════════════════════════════════════════════════
 
-    def high_freq_ratio(self, audio_data):
-        spectrum = np.abs(np.fft.rfft(audio_data))
-        freqs = np.fft.rfftfreq(len(audio_data), d=1 / self.sample_rate)
-        total = np.sum(spectrum)
-        return np.sum(spectrum[freqs >= 3000]) / total if total > 0 else 0
+    def registrar_actividad(self, actividad: str):
+        """Punto único de registro; todos los módulos lo llaman aquí."""
+        self.memoria.registrar_actividad(actividad)
 
-    def is_thump_or_voice(self, audio_data):
-        spectrum = np.abs(np.fft.rfft(audio_data))
-        freqs = np.fft.rfftfreq(len(audio_data), d=1 / self.sample_rate)
-        total = np.sum(spectrum) + 1e-9
-        if (np.sum(spectrum[freqs < 250]) / total) > 0.40: return True
-        if (np.sum(spectrum[(freqs >= 80) & (freqs < 1500)]) / total) > 0.55 and (
-                np.sum(spectrum[freqs >= 2500]) / total) < 0.18: return True
-        return False
+    # ════════════════════════════════════════════════════════
+    #  MENÚ Y COMANDOS.TXT
+    # ════════════════════════════════════════════════════════
 
-    def detect_clap_duration(self, audio_data):
-        above_threshold = np.abs(audio_data) > (self.clap_threshold * 0.7)
-        if not np.any(above_threshold): return 1.0
-        indices = np.where(above_threshold)[0]
-        return (indices[-1] - indices[0]) / self.sample_rate
+    MENU_TEXTO = """
++==============================================================+
+|                   ASISTENTE LIA  v3.0                        |
++==============================================================+
+|  APLAUSOS                                                    |
+|    1 aplauso   ->  Modo Estudio  (ChatGPT + WhatsApp)        |
+|    2 aplausos  ->  Modo Codigo   (VS Code + GitHub + Spotify)|
+|    3 aplausos  ->  Modo Juego    (Discord + TimerResolution) |
+|                                                              |
+|  COMANDOS DE VOZ  (di "Lia, ...")                            |
+|  -- Rutina --                                                |
+|    "Lia, inicio"             -> Rutina de inicio del dia     |
+|  -- Voz --                                                   |
+|    "Lia, silencio"           -> Solo texto, sin voz          |
+|    "Lia, habla"              -> Reactiva la voz              |
+|  -- Control --                                               |
+|    "Lia, pausate"            -> Pausa (3 aplausos p/volver)  |
+|    "Lia, apagate"            -> Apaga el asistente           |
+|  -- Aplicaciones --                                          |
+|    "Lia, abre [app]"         -> Abre cualquier aplicacion    |
+|    "Lia, cierra todo"        -> Cierra apps de trabajo       |
+|  -- Pendientes --                                            |
+|    "Lia, anota [tarea]"      -> Agrega pendiente             |
+|    "Lia, pendientes"         -> Lee tus pendientes           |
+|    "Lia, tarea X lista"      -> Marca tarea X como hecha     |
+|  -- Productividad --                                         |
+|    "Lia, pomodoro"           -> Timer 25 min                 |
+|    "Lia, pomodoro de 45"     -> Timer con minutos custom     |
+|    "Lia, recuerda X en N minutos" -> Recordatorio            |
+|    "Lia, clima"              -> Dice el clima actual         |
+|  -- Sistema --                                               |
+|    "Lia, comandos"           -> Abre este archivo            |
+|    "Lia, recalibra"          -> Recalibra el microfono       |
+|    "Lia, sistema"            -> Info de CPU y RAM            |
+|    "Lia, disco"              -> Uso del disco                |
+|    "Lia, bloquea"            -> Bloquea la PC                |
+|  -- Internet --                                              |
+|    "Lia, busca [X]"          -> Busca en Google              |
+|    "Lia, youtube [X]"        -> Busca en YouTube             |
+|  -- Notas rapidas --                                         |
+|    "Lia, nota [clave] [txt]" -> Guarda nota rapida           |
+|    "gracias"                 -> Cierra el archivo de comandos|
++==============================================================+
+"""
 
-    def detect_clap(self, audio_data):
-        if self.lia_hablando or self.calibrando: return False
-        peak = np.max(np.abs(audio_data))
-        if peak < self.clap_threshold: return False
-        rms = np.sqrt(np.mean(audio_data ** 2))
-        if rms == 0 or self.is_thump_or_voice(audio_data): return False
-        if not (self.crest_factor_min <= (peak / rms) <= self.crest_factor_max): return False
-        if self.high_freq_ratio(audio_data) < self.min_high_freq_ratio: return False
-        if self.zcr_rate(audio_data) > self.max_zcr: return False
-        if self.detect_clap_duration(audio_data) > self.clap_duration_max: return False
-        current_time = time.time()
-        if (current_time - self.last_clap_time) < self.clap_cooldown: return False
+    def mostrar_menu(self):
+        print(self.MENU_TEXTO)
 
-        self.last_clap_time = current_time
-        self.clap_events.append(current_time)
-        print("👏 APLAUSO DETECTADO")
-        return True
-
-    # --- CONTROL DE APPS BASE ---
-    def buscar_y_abrir_app(self, app_name, silent=False):
-        app_name = app_name.lower().strip()
-        if not silent: self.hablar(f"Buscando {app_name}...")
-        paths = [
-            os.path.expandvars(r"%ProgramData%\Microsoft\Windows\Start Menu\Programs\**\*.lnk"),
-            os.path.expandvars(r"%APPDATA%\Microsoft\Windows\Start Menu\Programs\**\*.lnk")
-        ]
-        archivos_lnk = []
-        for path in paths: archivos_lnk.extend(glob.glob(path, recursive=True))
-        for lnk in archivos_lnk:
-            if app_name in os.path.basename(lnk).lower():
-                try:
-                    os.startfile(lnk)
-                    if not silent: self.hablar(f"Iniciando {app_name}.")
-                    return True
-                except Exception:
-                    pass
+    def _generar_txt_comandos(self):
+        """Crea o actualiza el archivo lia_comandos.txt."""
         try:
-            subprocess.Popen(["start", app_name], shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            return True
-        except:
-            return False
+            with open(COMANDOS_TXT_PATH, "w", encoding="utf-8") as f:
+                f.write(self.MENU_TEXTO)
+        except Exception as e:
+            print(f"⚠️  No se pudo crear lia_comandos.txt: {e}")
 
-    # --- MODOS ---
-    def modo_estudio(self):
-        self.hablar("Modo estudio activado.")
-        self.internet.abrir_url("https://chat.openai.com", "ChatGPT", silent=True)
-        self.ultimo_modo = "estudio"
-        self.memoria.registrar_accion("modo_estudio")
+    def abrir_comandos_txt(self):
+        """Abre lia_comandos.txt con el Bloc de notas."""
+        import subprocess, platform
+        try:
+            if not os.path.exists(COMANDOS_TXT_PATH):
+                self._generar_txt_comandos()
+            if platform.system() == "Windows":
+                subprocess.Popen(["notepad.exe", COMANDOS_TXT_PATH])
+            else:
+                subprocess.Popen(["xdg-open", COMANDOS_TXT_PATH])
+            self.hablar("Aquí tienes todos mis comandos.")
+            self.registrar_actividad("Abrió Comandos.txt")
+        except Exception as e:
+            print(f"❌ Error al abrir comandos: {e}")
 
-    def modo_programacion(self):
-        self.hablar("Entorno de desarrollo listo.")
-        self.buscar_y_abrir_app("visual studio code", silent=True)
-        self.internet.abrir_url("https://github.com", "GitHub", silent=True)
-        self.ultimo_modo = "programacion"
-        self.memoria.registrar_accion("modo_programacion")
+    def cerrar_comandos_txt(self):
+        """Cierra el Bloc de notas (Windows)."""
+        import subprocess, platform
+        try:
+            if platform.system() == "Windows":
+                subprocess.run(["taskkill", "/f", "/im", "notepad.exe"],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
 
-    def modo_juego(self):
-        self.hablar("Entorno de juego preparado.")
-        self.buscar_y_abrir_app("discord", silent=True)
-        ruta_tr = os.path.expandvars(r"%USERPROFILE%\Downloads\TimerResolution.exe")
-        if os.path.exists(ruta_tr): os.startfile(ruta_tr)
-        self.ultimo_modo = "juego"
-        self.memoria.registrar_accion("modo_juego")
+    # ════════════════════════════════════════════════════════
+    #  CALLBACK DE APLAUSOS
+    # ════════════════════════════════════════════════════════
 
-    # --- BUCLE PRINCIPAL ---
-    def listen_for_commands(self):
-        with self.microphone as source:
-            self.recognizer.adjust_for_ambient_noise(source, duration=1)
-            while True:
+    def _handle_clap_sequence(self, count: int):
+        """
+        ClapDetector llama aquí cuando detecta una secuencia completa.
+        count = número de aplausos detectados.
+        """
+        if not self.is_active and count >= 3:
+            self.is_active = True
+            self.detector.set_active(True)
+            self.hablar("Sistemas reactivados.")
+            return
+
+        if not self.is_active:
+            return
+
+        if count == 1:
+            self.sistema.modo_estudio()
+        elif count == 2:
+            self.sistema.modo_programacion()
+        elif count >= 3:
+            self.sistema.modo_juego()
+
+    # ════════════════════════════════════════════════════════
+    #  PARSER DE COMANDOS DE VOZ
+    # ════════════════════════════════════════════════════════
+
+    def _parse_command(self, cmd: str):
+        """
+        Recibe el comando de voz ya limpio (sin 'lia', en minúsculas).
+        Delega a los módulos correspondientes.
+        """
+
+        # ── Comandos.txt ──────────────────────────────────────
+        if "comandos" in cmd:
+            self.abrir_comandos_txt()
+            return
+        if "gracias" in cmd:
+            self.cerrar_comandos_txt()
+            return
+
+        # ── Rutina de inicio ──────────────────────────────────
+        if any(k in cmd for k in ("inicio", "rutina", "buenos días", "buen día")):
+            self.internet.rutina_inicio()
+            return
+
+        # ── Voz ───────────────────────────────────────────────
+        if "silencio" in cmd:
+            self.modo_silencioso = True
+            print("🔇 Modo silencioso activado.")
+            return
+        if "habla" in cmd or "activa voz" in cmd:
+            self.modo_silencioso = False
+            self.hablar("Voz reactivada.")
+            return
+
+        # ── Control ───────────────────────────────────────────
+        if "pausate" in cmd or "pausa" in cmd:
+            self.is_active = False
+            self.detector.set_active(False)
+            self.hablar("Pausada. 3 aplausos para volver.")
+            return
+        if "apagate" in cmd or "apagar" in cmd:
+            self.hablar("Apagando. Hasta luego.")
+            self._shutdown_flag.set()
+            return
+
+        # ── Aplicaciones ─────────────────────────────────────
+        if "abre " in cmd:
+            app = cmd.split("abre ", 1)[-1].strip()
+            self.sistema.open_application(app)
+            return
+        if "cierra todo" in cmd or "cerrar todo" in cmd:
+            self.sistema.cerrar_todo()
+            return
+
+        # ── Pendientes ────────────────────────────────────────
+        if "pendientes" in cmd and not any(k in cmd for k in ("anota", "tarea")):
+            self.memoria.decir_pendientes()
+            return
+
+        for verbo in ("anota", "apunta", "agrega pendiente", "agrega"):
+            if verbo in cmd:
+                texto = cmd.split(verbo, 1)[-1].strip().strip(",.-: ")
+                if texto:
+                    self.memoria.agregar_pendiente(texto)
+                else:
+                    self.hablar("¿Qué quieres que anote?")
+                return
+
+        for kw_fin in ("lista", "completada", "hecha", "terminada", "completa"):
+            if kw_fin in cmd and "tarea" in cmd:
+                tarea = (cmd.replace("tarea", "")
+                            .replace(kw_fin, "")
+                            .strip().strip(",.-: "))
+                self.memoria.completar_tarea(tarea)
+                return
+
+        # ── Notas rápidas ─────────────────────────────────────
+        if cmd.startswith("nota "):
+            partes = cmd[5:].strip().split(" ", 1)
+            if len(partes) == 2:
+                self.memoria.guardar_nota(partes[0], partes[1])
+            else:
+                self.hablar("Di: nota [clave] [contenido].")
+            return
+        if cmd.startswith("recuerda nota "):
+            clave = cmd.replace("recuerda nota", "").strip()
+            self.memoria.obtener_nota(clave)
+            return
+
+        # ── Pomodoro ─────────────────────────────────────────
+        if "pomodoro" in cmd:
+            minutos = 25
+            for p in cmd.split():
+                if p.isdigit():
+                    minutos = int(p)
+                    break
+            self.memoria.iniciar_pomodoro(minutos)
+            return
+
+        # ── Recordatorio ─────────────────────────────────────
+        if "recuerda" in cmd and " en " in cmd:
+            try:
+                partes  = cmd.split(" en ", 1)
+                mensaje = partes[0].replace("recuerda", "").strip()
+                resto   = partes[1]
+                mins    = float(
+                    ''.join(c for c in resto if c.isdigit() or c == '.') or '5'
+                )
+                self.memoria.recordar_en(mensaje, mins)
+            except Exception:
+                self.hablar("No entendí el recordatorio.")
+            return
+
+        # ── Clima ─────────────────────────────────────────────
+        if "clima" in cmd or "tiempo" in cmd:
+            self.internet.decir_clima()
+            return
+
+        # ── Búsquedas ─────────────────────────────────────────
+        if "busca " in cmd or "buscar " in cmd:
+            consulta = (cmd.replace("busca", "")
+                           .replace("buscar", "")
+                           .strip())
+            self.internet.buscar_google(consulta)
+            return
+        if "youtube " in cmd:
+            consulta = cmd.split("youtube ", 1)[-1].strip()
+            self.internet.buscar_youtube(consulta)
+            return
+
+        # ── Sistema ───────────────────────────────────────────
+        if "recalibra" in cmd or "calibra" in cmd:
+            self.detector.calibrar()
+            return
+        if "sistema" in cmd or "cpu" in cmd or "ram" in cmd:
+            self.sistema.obtener_info_sistema()
+            return
+        if "disco" in cmd:
+            self.sistema.obtener_uso_disco()
+            return
+        if "bloquea" in cmd or "bloquear" in cmd:
+            self.sistema.bloquear_pc()
+            return
+        if "apaga la pc" in cmd or "apaga el pc" in cmd:
+            self.sistema.apagar_pc(segundos=60)
+            return
+        if "cancela apagado" in cmd:
+            self.sistema.cancelar_apagado()
+            return
+
+        # ── Dev ───────────────────────────────────────────────
+        if "git status" in cmd or "estado del repo" in cmd:
+            self.dev.estado_git()
+            return
+        if "git push" in cmd:
+            self.dev.hacer_push()
+            return
+        if "git pull" in cmd:
+            self.dev.hacer_pull()
+            return
+        if "ramas" in cmd or "ramas git" in cmd:
+            self.dev.listar_ramas()
+            return
+
+        # ── Ayuda ─────────────────────────────────────────────
+        if "ayuda" in cmd or "menú" in cmd or "menu" in cmd:
+            self.mostrar_menu()
+            self.hablar("Te mostré el menú en pantalla.")
+            return
+
+    # ════════════════════════════════════════════════════════
+    #  ESCUCHA DE VOZ
+    # ════════════════════════════════════════════════════════
+
+    def _listen_loop(self):
+        with self.microphone as src:
+            # Calibración inicial más corta para no bloquear el inicio
+            self.recognizer.adjust_for_ambient_noise(src, duration=1.0)
+
+            while not self._shutdown_flag.is_set():
                 if not self.is_active:
-                    time.sleep(0.5)
+                    time.sleep(0.4)
                     continue
                 try:
-                    audio = self.recognizer.listen(source, timeout=None, phrase_time_limit=5)
-                    command = self.recognizer.recognize_google(audio, language="es-MX").lower()
-                    print(f"🎤 > {command}")
+                    # Aumentamos phrase_time_limit a 8 para frases largas
+                    audio = self.recognizer.listen(
+                        src, timeout=None, phrase_time_limit=8
+                    )
+                    cmd = self.recognizer.recognize_google(
+                        audio, language="es-MX"
+                    ).lower()
 
-                    if "lia" in command or "lía" in command:
+                    if "gracias" in cmd:
+                        self.cerrar_comandos_txt()
+                        continue
 
-                        # --- INTERNET (NUEVO) ---
-                        if "busca" in command and "en google" in command:
-                            consulta = command.split("busca ")[1].replace("en google", "").strip()
-                            self.internet.buscar_en_google(consulta)
-                            self.memoria.registrar_accion("buscar_google")
+                    print(f"🎤 Escuché: '{cmd}'")
 
-                        # --- TAREAS Y MEMORIA (REFACTORIZADO) ---
-                        elif "completada" in command and "tarea" in command:
-                            tarea = command.split("tarea ")[1].split(" completada")[0].strip()
-                            self.memoria.completar_pendiente(tarea)
-                        elif any(x in command for x in ["anota", "apunta"]):
-                            texto = command.replace("lia", "").replace("anota", "").replace("apunta", "").strip(" ,.")
-                            self.memoria.agregar_pendiente(texto)
-                        elif "pendientes" in command:
-                            self.memoria.recordar_pendientes_activos()
+                    # Si solo detectó "Lia", ignoramos para no procesar comandos vacíos
+                    if cmd.strip() in ["lia", "lía"]:
+                        continue
 
-                        # --- SISTEMA ---
-                        elif "abre " in command:
-                            app = command.split("abre ")[1].strip()
-                            self.buscar_y_abrir_app(app)
-                            self.memoria.registrar_accion(f"abrir_{app.replace(' ', '_')}")
-
-                            # --- ABORTAR (Modificado para cancelar apagados) ---
-                        elif "aborta" in command:
-                            self.sistema.cancelar_apagado()
-                            self.abortar_ultimo_modo()  # Tu función original que cierra Chrome/VSCode
-
-                        # --- CONTROL DE SISTEMA ---
-                        elif "apaga la pc" in command or "apaga el equipo" in command:
-                            self.sistema.apagar_pc()
-                            self.memoria.registrar_accion("apagar_pc")
-                        elif "reinicia" in command:
-                            self.sistema.reiniciar_pc()
-                        elif "el volumen" in command:
-                            self.sistema.cambiar_volumen(command)
-
-                        # --- DESARROLLO Y PROYECTOS ---
-                        elif "crea proyecto en" in command:
-                            # Comando: "Lia, crea proyecto en python llamado test"
-                            partes = command.split("crea proyecto en ")[1].split(" llamado ")
-                            if len(partes) == 2:
-                                lenguaje = partes[0].strip()
-                                nombre = partes[1].strip()
-                                self.dev.crear_proyecto(lenguaje, nombre)
-                                self.memoria.registrar_accion("crear_proyecto")
-                            else:
-                                self.hablar("Dime el lenguaje y luego la palabra llamado, seguido del nombre.")
-
-                        elif "carpeta" in command and ("crea" in command or "elimina" in command):
-                            # Comando: "Lia, crea carpeta pruebas"
-                            accion = "crea" if "crea" in command else "elimina"
-                            nombre = command.replace("lia", "").replace(accion, "").replace("carpeta", "").strip()
-                            if nombre:
-                                self.dev.gestionar_carpeta(accion, nombre)
+                    if "lia" in cmd or "lía" in cmd:
+                        # Limpieza mejorada
+                        limpio = cmd.replace("lía", "").replace("lia", "").strip(",. ")
+                        if limpio:
+                            self._parse_command(limpio)
 
                 except sr.UnknownValueError:
                     pass
-                except Exception as e:
+                except sr.RequestError as e:
+                    print(f"⚠️  Reconocimiento: {e}")
+                except Exception:
                     time.sleep(0.5)
 
-    def start_clap_detection(self):
-        try:
-            with sd.InputStream(channels=1, samplerate=self.sample_rate,
-                                callback=lambda i, f, t, s: self.detect_clap(i[:, 0]),
-                                blocksize=int(self.sample_rate * 0.05), dtype="float32"):
-                while True:
-                    current_time = time.time()
-                    while self.clap_events and (current_time - self.clap_events[0]) > self.clap_window:
-                        self.clap_events.popleft()
-                    if self.clap_events and (current_time - self.clap_events[-1]) > self.sequence_gap:
-                        count = len(self.clap_events)
-                        if not self.is_active and count >= 3:
-                            self.is_active = True
-                            self.hablar("Sistemas reactivados.")
-                        elif self.is_active:
-                            if count == 1:
-                                self.modo_estudio()
-                            elif count == 2:
-                                self.modo_programacion()
-                            elif count >= 3:
-                                self.modo_juego()
-                        self.clap_events.clear()
-                    time.sleep(0.05)
-        except KeyboardInterrupt:
-            os._exit(0)
+    # ════════════════════════════════════════════════════════
+    #  ARRANQUE
+    # ════════════════════════════════════════════════════════
 
     def run(self):
-        threading.Thread(target=self.listen_for_commands, daemon=True).start()
-        self.start_clap_detection()
+        """Inicia el hilo de voz y el loop de aplausos (bloqueante)."""
+        voz = threading.Thread(target=self._listen_loop, daemon=True)
+        voz.start()
+        try:
+            self.detector.start_loop(shutdown_flag=self._shutdown_flag)
+        except KeyboardInterrupt:
+            print("\n👋 Lia detenida.")
+        finally:
+            self._shutdown_flag.set()
 
 
+# ── Punto de entrada ─────────────────────────────────────────
 if __name__ == "__main__":
-    os.system('cls' if os.name == 'nt' else 'clear')
+    print("""
++=======================================+
+|       ASISTENTE  LIA  v3.0            |
++=======================================+
+""")
     LiaAssistant().run()
