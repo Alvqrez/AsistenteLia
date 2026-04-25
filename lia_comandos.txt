@@ -1,0 +1,43 @@
+
++==============================================================+
+|                   ASISTENTE LIA  v3.0                        |
++==============================================================+
+|  APLAUSOS                                                    |
+|    1 aplauso   ->  Modo Estudio  (ChatGPT + WhatsApp)        |
+|    2 aplausos  ->  Modo Codigo   (VS Code + GitHub + Spotify)|
+|    3 aplausos  ->  Modo Juego    (Discord + TimerResolution) |
+|                                                              |
+|  COMANDOS DE VOZ  (di "Lia, ...")                            |
+|  -- Rutina --                                                |
+|    "Lia, inicio"             -> Rutina de inicio del dia     |
+|  -- Voz --                                                   |
+|    "Lia, silencio"           -> Solo texto, sin voz          |
+|    "Lia, habla"              -> Reactiva la voz              |
+|  -- Control --                                               |
+|    "Lia, pausate"            -> Pausa (3 aplausos p/volver)  |
+|    "Lia, apagate"            -> Apaga el asistente           |
+|  -- Aplicaciones --                                          |
+|    "Lia, abre [app]"         -> Abre cualquier aplicacion    |
+|    "Lia, cierra todo"        -> Cierra apps de trabajo       |
+|  -- Pendientes --                                            |
+|    "Lia, anota [tarea]"      -> Agrega pendiente             |
+|    "Lia, pendientes"         -> Lee tus pendientes           |
+|    "Lia, tarea X lista"      -> Marca tarea X como hecha     |
+|  -- Productividad --                                         |
+|    "Lia, pomodoro"           -> Timer 25 min                 |
+|    "Lia, pomodoro de 45"     -> Timer con minutos custom     |
+|    "Lia, recuerda X en N minutos" -> Recordatorio            |
+|    "Lia, clima"              -> Dice el clima actual         |
+|  -- Sistema --                                               |
+|    "Lia, comandos"           -> Abre este archivo            |
+|    "Lia, recalibra"          -> Recalibra el microfono       |
+|    "Lia, sistema"            -> Info de CPU y RAM            |
+|    "Lia, disco"              -> Uso del disco                |
+|    "Lia, bloquea"            -> Bloquea la PC                |
+|  -- Internet --                                              |
+|    "Lia, busca [X]"          -> Busca en Google              |
+|    "Lia, youtube [X]"        -> Busca en YouTube             |
+|  -- Notas rapidas --                                         |
+|    "Lia, nota [clave] [txt]" -> Guarda nota rapida           |
+|    "gracias"                 -> Cierra el archivo de comandos|
++==============================================================+
