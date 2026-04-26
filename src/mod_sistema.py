@@ -1,63 +1,46 @@
 #!/usr/bin/env python3
-"""
-mod_sistema.py  –  Módulo de Sistema
-Responsabilidades:
-  · Abrir / cerrar aplicaciones de escritorio
-  · Modos de trabajo (Estudio, Código, Juego)
-  · Control del sistema: disco, procesos, energía, bloqueo
-  · Notificaciones toast de Windows
-"""
 
+import logging
 import os
 import subprocess
 import platform
 import webbrowser
 import time
 
+logger = logging.getLogger("lia.sistema")
+
 try:
     import psutil
     _PSUTIL = True
 except ImportError:
     _PSUTIL = False
-    print("⚠️  psutil no instalado. Instala con: pip install psutil")
+    logger.warning("psutil no instalado. Instala con: pip install psutil")
 
 
 class SystemTools:
-    """
-    Todas las operaciones que tocan el sistema operativo o lanzan procesos.
-    Recibe 'parent_lia' para poder llamar hablar() y registrar_actividad().
-    """
 
-    # ── Mapa de aplicaciones ─────────────────────────────────
     APP_MAP: dict = {
-        # Desarrollo
-        "vscode":                    "code.cmd",
-        "visual studio code":        "code.cmd",
-        "visual studio":             "code.cmd",
-        # Música
+        "vscode":                    "code",
+        "visual studio code":        "code",
+        "visual studio":             "code",
         "spotify":                   r"%APPDATA%\Spotify\Spotify.exe",
-        # Comunicación
         "discord":                   r"%LOCALAPPDATA%\Discord\Update.exe",
         "whatsapp":                  r"%LOCALAPPDATA%\WhatsApp\WhatsApp.exe",
         "telegram":                  r"%APPDATA%\Telegram Desktop\Telegram.exe",
         "slack":                     r"%LOCALAPPDATA%\slack\slack.exe",
         "teams":                     r"%LOCALAPPDATA%\Microsoft\Teams\current\Teams.exe",
         "zoom":                      r"%APPDATA%\Zoom\bin\Zoom.exe",
-        # Navegadores
         "chrome":                    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
         "firefox":                   r"C:\Program Files\Mozilla Firefox\firefox.exe",
         "edge":                      r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-        # Microsoft Office
         "word":                      r"C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE",
         "excel":                     r"C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE",
         "powerpoint":                r"C:\Program Files\Microsoft Office\root\Office16\POWERPNT.EXE",
         "outlook":                   r"C:\Program Files\Microsoft Office\root\Office16\OUTLOOK.EXE",
-        # Notas / productividad
         "obsidian":                  r"%LOCALAPPDATA%\Obsidian\Obsidian.exe",
         "notion":                    r"%LOCALAPPDATA%\Programs\Notion\Notion.exe",
         "notepad":                   "notepad.exe",
         "bloc de notas":             "notepad.exe",
-        # Sistema
         "explorador":                "explorer.exe",
         "calculadora":               "calc.exe",
         "terminal":                  "wt.exe",
@@ -67,7 +50,6 @@ class SystemTools:
         "administrador de tareas":   "taskmgr.exe",
         "configuracion":             "ms-settings:",
         "panel de control":          "control.exe",
-        # Multimedia / gaming
         "steam":                     r"C:\Program Files (x86)\Steam\steam.exe",
         "vlc":                       r"C:\Program Files\VideoLAN\VLC\vlc.exe",
         "obs":                       r"C:\Program Files\obs-studio\bin\64bit\obs64.exe",
@@ -80,57 +62,48 @@ class SystemTools:
         self.lia     = parent_lia
         self.os_type = platform.system()
 
-    # ════════════════════════════════════════════════════════
-    #  APERTURA DE APLICACIONES
-    # ════════════════════════════════════════════════════════
+    def _es_comando_simple(self, ruta: str) -> bool:
+        return "\\" not in ruta and "/" not in ruta
 
     def _resolver_ruta(self, clave: str):
         raw = self.APP_MAP.get(clave.lower(), "")
         if not raw:
             return None
-
         ruta = os.path.expandvars(raw)
-
-        # Si no tiene barras (\) ni puntos (.), es un comando del sistema (como 'code')
-        # No verificamos si existe, dejamos que subprocess lo intente.
-        if "\\" not in ruta and "/" not in ruta:
+        if self._es_comando_simple(ruta):
             return ruta
-
-            # Si es una ruta completa, ahí sí verificamos
         return ruta if os.path.exists(ruta) else None
 
     def open_application(self, nombre: str):
-        """
-        Abre una app por nombre hablado.
-        3 capas: APP_MAP → shell directo → búsqueda en Menú de Inicio.
-        """
         nombre_limpio = nombre.lower().strip()
+        if not nombre_limpio:
+            self.lia.hablar("No entendí qué aplicación abrir.")
+            return
 
-        # 1. APP_MAP
         ruta = self._resolver_ruta(nombre_limpio)
         if ruta:
             try:
                 if "Update.exe" in ruta and "Discord" in ruta:
                     subprocess.Popen(f'"{ruta}" --processStart Discord.exe', shell=True)
+                elif self._es_comando_simple(ruta):
+                    subprocess.Popen(ruta, shell=True)
                 else:
                     subprocess.Popen(f'"{ruta}"', shell=True)
                 self.lia.hablar(f"Abriendo {nombre}.")
                 self.lia.registrar_actividad(f"Abrió {nombre}")
                 return
-            except Exception as e:
-                print(f"❌ Error al lanzar {ruta}: {e}")
+            except Exception as ex:
+                logger.error("Error al lanzar '%s': %s", ruta, ex)
 
-        # 2. Shell directo
         try:
             subprocess.Popen(nombre_limpio, shell=True,
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             self.lia.hablar(f"Intentando abrir {nombre}.")
             self.lia.registrar_actividad(f"Abrió (shell) {nombre}")
             return
-        except Exception:
-            pass
+        except Exception as ex:
+            logger.warning("Fallo shell directo para '%s': %s", nombre_limpio, ex)
 
-        # 3. Menú de Inicio
         start_menus = [
             os.path.expandvars(r"%APPDATA%\Microsoft\Windows\Start Menu\Programs"),
             r"C:\ProgramData\Microsoft\Windows\Start Menu\Programs",
@@ -147,19 +120,18 @@ class SystemTools:
                         return
 
         self.lia.hablar(f"No encontré {nombre} en el sistema.")
-        print(f"❌ App no encontrada: {nombre}")
+        logger.warning("App no encontrada: '%s'", nombre)
 
     def open_url(self, url: str, nombre: str):
-        """Abre una URL en el navegador predeterminado."""
         try:
             webbrowser.open(url)
             self.lia.hablar(f"Abriendo {nombre}.")
             self.lia.registrar_actividad(f"Abrió {nombre}")
-        except Exception as e:
-            print(f"❌ Error al abrir {nombre}: {e}")
+        except Exception as ex:
+            logger.error("Error al abrir URL '%s': %s", url, ex)
+            self.lia.hablar(f"No pude abrir {nombre}.")
 
     def cerrar_todo(self):
-        """Termina procesos de las aplicaciones de trabajo."""
         print("\n🛑 CERRANDO TODO")
         procesos = ["chrome.exe", "msedge.exe", "firefox.exe",
                     "Code.exe", "Spotify.exe", "Discord.exe",
@@ -171,7 +143,6 @@ class SystemTools:
         self.lia.registrar_actividad("Cerró Todo")
 
     def abrir_desde_descargas(self, nombre: str):
-        """Busca y abre un archivo por nombre parcial en Descargas."""
         carpeta = os.path.join(os.path.expanduser("~"), "Downloads")
         for root, _, files in os.walk(carpeta):
             for archivo in files:
@@ -180,10 +151,9 @@ class SystemTools:
                     self.lia.hablar(f"Abriendo {archivo}.")
                     self.lia.registrar_actividad(f"Abrió desde Descargas: {archivo}")
                     return
-        self.lia.hablar(f"No encontré {nombre} en Descargas.")
+        logger.info("'%s' no encontrado en Descargas.", nombre)
 
     def abrir_carpeta(self, ruta: str):
-        """Abre una carpeta en el explorador de archivos."""
         if not os.path.exists(ruta):
             self.lia.hablar("La carpeta no existe.")
             return
@@ -196,13 +166,9 @@ class SystemTools:
                 subprocess.Popen(["xdg-open", ruta])
             self.lia.hablar("Abriendo carpeta.")
             self.lia.registrar_actividad(f"Abrió carpeta: {ruta}")
-        except Exception as e:
+        except Exception as ex:
+            logger.error("Error al abrir carpeta '%s': %s", ruta, ex)
             self.lia.hablar("Error al abrir carpeta.")
-            print(f"❌ {e}")
-
-    # ════════════════════════════════════════════════════════
-    #  MODOS DE TRABAJO
-    # ════════════════════════════════════════════════════════
 
     def modo_estudio(self):
         print("\n📚 MODO ESTUDIO")
@@ -230,10 +196,6 @@ class SystemTools:
         self.abrir_desde_descargas("TimerResolution")
         self.lia.registrar_actividad("Modo Juego")
 
-    # ════════════════════════════════════════════════════════
-    #  INFORMACIÓN DEL SISTEMA
-    # ════════════════════════════════════════════════════════
-
     def obtener_info_sistema(self):
         if not _PSUTIL:
             self.lia.hablar("psutil no está instalado.")
@@ -244,16 +206,17 @@ class SystemTools:
             self.lia.hablar(f"CPU al {cpu:.0f} por ciento.")
             self.lia.hablar(f"RAM al {ram.percent:.0f} por ciento.")
             self.lia.registrar_actividad("Consultó info del sistema")
-        except Exception as e:
+        except Exception as ex:
+            logger.error("Error al leer sistema: %s", ex)
             self.lia.hablar("Error al leer el sistema.")
-            print(f"❌ {e}")
 
     def obtener_uso_disco(self):
         if not _PSUTIL:
             self.lia.hablar("psutil no está instalado.")
             return
         try:
-            disco    = psutil.disk_usage("/")
+            ruta = "C:\\" if self.os_type == "Windows" else "/"
+            disco    = psutil.disk_usage(ruta)
             libre_gb = disco.free  / (1024 ** 3)
             total_gb = disco.total / (1024 ** 3)
             self.lia.hablar(
@@ -261,9 +224,9 @@ class SystemTools:
                 f"{libre_gb:.0f} de {total_gb:.0f} GB libres."
             )
             self.lia.registrar_actividad("Consultó uso de disco")
-        except Exception as e:
+        except Exception as ex:
+            logger.error("Error al leer disco: %s", ex)
             self.lia.hablar("Error al leer el disco.")
-            print(f"❌ {e}")
 
     def obtener_procesos_pesados(self, top_n: int = 5):
         if not _PSUTIL:
@@ -271,23 +234,19 @@ class SystemTools:
             return
         try:
             procs = sorted(
-                psutil.process_iter(['name', 'memory_percent']),
-                key=lambda p: p.info.get('memory_percent') or 0,
-                reverse=True
+                psutil.process_iter(["name", "memory_percent"]),
+                key=lambda p: p.info.get("memory_percent") or 0,
+                reverse=True,
             )[:top_n]
             self.lia.hablar("Procesos más pesados:")
             for p in procs:
-                mem = p.info.get('memory_percent') or 0
+                mem = p.info.get("memory_percent") or 0
                 self.lia.hablar(f"{p.info['name']}: {mem:.1f} por ciento")
                 time.sleep(0.2)
             self.lia.registrar_actividad("Consultó procesos")
-        except Exception as e:
+        except Exception as ex:
+            logger.error("Error al leer procesos: %s", ex)
             self.lia.hablar("Error al leer procesos.")
-            print(f"❌ {e}")
-
-    # ════════════════════════════════════════════════════════
-    #  CONTROL DE ENERGÍA Y BLOQUEO
-    # ════════════════════════════════════════════════════════
 
     def bloquear_pc(self):
         if self.os_type != "Windows":
@@ -315,12 +274,7 @@ class SystemTools:
         self.lia.hablar("Apagado cancelado.")
         self.lia.registrar_actividad("Canceló apagado")
 
-    # ════════════════════════════════════════════════════════
-    #  NOTIFICACIONES TOAST  (usadas por Lia y mod_memoria)
-    # ════════════════════════════════════════════════════════
-
     def notificar(self, titulo: str, mensaje: str):
-        """Notificación toast en Windows via PowerShell. Sin dependencias extra."""
         try:
             titulo  = titulo.replace("'", "''")
             mensaje = mensaje.replace("'", "''")
@@ -335,7 +289,7 @@ class SystemTools:
             )
             subprocess.Popen(
                 ["powershell", "-WindowStyle", "Hidden", "-Command", script],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
-        except Exception:
-            pass
+        except Exception as ex:
+            logger.warning("Error al mostrar notificación: %s", ex)
