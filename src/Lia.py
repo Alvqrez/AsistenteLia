@@ -403,7 +403,7 @@ class LiaAssistant:
 if __name__ == "__main__":
     print("""
 +=======================================+
-|       ASISTENTE  LIA  v5.0            |
+|       ASISTENTE  LIA  v4.2.1          |
 +=======================================+
 """)
     LiaAssistant().run()
