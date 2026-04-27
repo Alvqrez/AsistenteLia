@@ -17,20 +17,16 @@ class AudioAnalyzer:
     def rms(self, audio: np.ndarray) -> float:
         return float(np.sqrt(np.mean(audio ** 2)))
 
-    def crest_factor(self, audio: np.ndarray) -> float:
-        r = self.rms(audio)
-        return self.peak(audio) / r if r > 1e-9 else 0.0
-
     def spectral_bands(self, audio: np.ndarray) -> dict:
         spectrum = np.abs(np.fft.rfft(audio))
         freqs    = np.fft.rfftfreq(len(audio), d=1.0 / self.sample_rate)
         total    = np.sum(spectrum) + 1e-12
         return {
-            "sub_bass": np.sum(spectrum[freqs < 150])                          / total,
-            "bass":     np.sum(spectrum[(freqs >= 150)  & (freqs < 400)])      / total,
-            "low_mid":  np.sum(spectrum[(freqs >= 400)  & (freqs < 1500)])     / total,
-            "high_mid": np.sum(spectrum[(freqs >= 1500) & (freqs < 3000)])     / total,
-            "high":     np.sum(spectrum[freqs >= 3000])                        / total,
+            "sub_bass": np.sum(spectrum[freqs < 150])                         / total,
+            "bass":     np.sum(spectrum[(freqs >= 150)  & (freqs < 400)])     / total,
+            "low_mid":  np.sum(spectrum[(freqs >= 400)  & (freqs < 1500)])    / total,
+            "high_mid": np.sum(spectrum[(freqs >= 1500) & (freqs < 3000)])    / total,
+            "high":     np.sum(spectrum[freqs >= 3000])                       / total,
         }
 
     def high_freq_ratio(self, audio: np.ndarray) -> float:
@@ -48,8 +44,7 @@ class AudioAnalyzer:
         return float(freqs[np.argmax(spectrum)])
 
     def zcr(self, audio: np.ndarray) -> float:
-        crossings = np.sum(np.abs(np.diff(np.sign(audio))))
-        return float(crossings / len(audio))
+        return float(np.sum(np.abs(np.diff(np.sign(audio)))) / len(audio))
 
     def peak_duration(self, audio: np.ndarray, threshold_ratio: float = 0.55) -> float:
         thr     = self.peak(audio) * threshold_ratio
@@ -61,38 +56,30 @@ class AudioAnalyzer:
     def is_table_impact(self, audio: np.ndarray) -> bool:
         bands      = self.spectral_bands(audio)
         low_energy = bands["sub_bass"] + bands["bass"]
-        duracion   = self.peak_duration(audio)
-        if duracion < 0.015:
+        if self.peak_duration(audio) < 0.015:
             return True
         if low_energy > 0.50:
             return True
-        mid      = len(audio) // 2
-        e_first  = np.sqrt(np.mean(audio[:mid] ** 2))
-        e_second = np.sqrt(np.mean(audio[mid:] ** 2))
-        if e_first > 1e-9 and (e_second / e_first) > 0.70:
-            if bands["high"] < 0.20:
-                return True
+        mid     = len(audio) // 2
+        e_first = np.sqrt(np.mean(audio[:mid] ** 2))
+        e_second= np.sqrt(np.mean(audio[mid:] ** 2))
+        if e_first > 1e-9 and (e_second / e_first) > 0.70 and bands["high"] < 0.20:
+            return True
         return False
 
     def is_voice_like(self, audio: np.ndarray) -> bool:
-        bands       = self.spectral_bands(audio)
-        low_energy  = bands["sub_bass"] + bands["bass"] + bands["low_mid"]
-        high_energy = bands["high"]
-        centroid    = self.spectral_centroid(audio)
-        dom         = self.dominant_freq(audio)
-        by_bands    = (low_energy > 0.50) and (high_energy < 0.22)
-        by_centroid = centroid < 2500
-        by_dominant = dom < 2000
-        return (by_bands and by_centroid) or by_dominant
+        bands      = self.spectral_bands(audio)
+        low_energy = bands["sub_bass"] + bands["bass"] + bands["low_mid"]
+        by_bands   = (low_energy > 0.50) and (bands["high"] < 0.22)
+        return (by_bands and self.spectral_centroid(audio) < 2500) or self.dominant_freq(audio) < 2000
 
 
 class ClapDetector:
 
     def __init__(self, on_sequence, sample_rate: int = 44100):
-        self.on_sequence  = on_sequence
-        self.sample_rate  = sample_rate
-        self.analyzer     = AudioAnalyzer(sample_rate)
-
+        self.on_sequence       = on_sequence
+        self.sample_rate       = sample_rate
+        self.analyzer          = AudioAnalyzer(sample_rate)
         self.clap_threshold    = 0.12
         self.crest_factor_min  = 2.2
         self.crest_factor_max  = 25.0
@@ -102,14 +89,12 @@ class ClapDetector:
         self.clap_cooldown     = 0.15
         self.clap_window       = 2.5
         self.sequence_gap      = 0.90
-
-        self.clap_events    = deque(maxlen=20)
-        self.last_clap_time = 0.0
-
-        self.calibrando   = True
-        self.noise_floor  = 0.0
-        self.lia_hablando = False
-        self._active      = True
+        self.clap_events       = deque(maxlen=20)
+        self.last_clap_time    = 0.0
+        self.calibrando        = True
+        self.noise_floor       = 0.0
+        self.lia_hablando      = False
+        self._active           = True
 
     def set_lia_hablando(self, estado: bool):
         self.lia_hablando = estado
@@ -118,18 +103,16 @@ class ClapDetector:
         self._active = estado
 
     def calibrar(self, duracion: float = 1.5) -> float:
-        print(f"🎤 Calibrando ruido ambiente — mantén silencio {duracion:.0f}s…")
+        print(f"Calibrando ruido ambiente — mantén silencio {duracion:.0f}s…")
         try:
             rec = sd.rec(int(duracion * self.sample_rate),
-                         samplerate=self.sample_rate,
-                         channels=1, dtype='float32')
+                         samplerate=self.sample_rate, channels=1, dtype='float32')
             sd.wait()
             self.noise_floor    = float(np.abs(rec).max())
             self.clap_threshold = max(0.15, self.noise_floor * 3.0)
-            print(f"   Ruido base      : {self.noise_floor:.4f}")
-            print(f"   Threshold final : {self.clap_threshold:.4f}")
+            print(f"   Ruido base: {self.noise_floor:.4f}  Threshold: {self.clap_threshold:.4f}")
         except Exception as e:
-            print(f"⚠️  Calibración fallida ({e}). Usando threshold 0.15.")
+            print(f"Calibracion fallida ({e}). Usando 0.15.")
         finally:
             self.calibrando = False
         return self.clap_threshold
@@ -144,9 +127,7 @@ class ClapDetector:
         rms = az.rms(audio)
         if rms < 1e-6:
             return False
-        if az.is_table_impact(audio):
-            return False
-        if az.is_voice_like(audio):
+        if az.is_table_impact(audio) or az.is_voice_like(audio):
             return False
         cf = pk / rms
         if not (self.crest_factor_min <= cf <= self.crest_factor_max):
@@ -162,19 +143,16 @@ class ClapDetector:
             return False
         self.last_clap_time = now
         self.clap_events.append(now)
-        print(f"  👏 pk={pk:.3f}  cf={cf:.1f}"
-              f"  hf={az.high_freq_ratio(audio):.2f}"
-              f"  zcr={az.zcr(audio):.3f}"
-              f"  dur={az.peak_duration(audio)*1000:.0f}ms")
+        print(f"  Aplauso pk={pk:.3f} cf={cf:.1f} hf={az.high_freq_ratio(audio):.2f}")
         return True
 
     def _audio_callback(self, indata, frames, time_info, status):
         if status:
-            print(f"⚠️  Audio: {status}")
+            print(f"Audio: {status}")
         self._es_aplauso_valido(indata[:, 0].copy())
 
     def start_loop(self, shutdown_flag=None):
-        print("👏 Detección de aplausos activa.\n")
+        print("Deteccion de aplausos activa.\n")
         block = int(self.sample_rate * 0.05)
         with sd.InputStream(channels=1, samplerate=self.sample_rate,
                             callback=self._audio_callback,
@@ -183,16 +161,14 @@ class ClapDetector:
                 if shutdown_flag and shutdown_flag.is_set():
                     break
                 now = time.time()
-                while (self.clap_events
-                       and (now - self.clap_events[0]) > self.clap_window):
+                while self.clap_events and (now - self.clap_events[0]) > self.clap_window:
                     self.clap_events.popleft()
-                if (self.clap_events
-                        and (now - self.clap_events[-1]) > self.sequence_gap):
+                if self.clap_events and (now - self.clap_events[-1]) > self.sequence_gap:
                     count = len(self.clap_events)
                     self.clap_events.clear()
-                    print(f"\n✅ Secuencia: {count} aplauso(s)\n")
+                    print(f"\nSecuencia: {count} aplauso(s)\n")
                     try:
                         self.on_sequence(count)
                     except Exception as e:
-                        print(f"❌ Error en callback de secuencia: {e}")
+                        print(f"Error en callback: {e}")
                 time.sleep(0.04)

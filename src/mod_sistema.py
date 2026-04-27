@@ -58,6 +58,79 @@ class SystemTools:
         "postman":                   r"%LOCALAPPDATA%\Postman\Postman.exe",
     }
 
+    # URLs de servicios web. Agrega los que quieras con el mismo formato:
+    # "nombre que dices": "https://url-del-sitio.com",
+    WEB_MAP: dict = {
+        "whatsapp web":      "https://web.whatsapp.com",
+        "whatsapp":          "https://web.whatsapp.com",
+        "canva":             "https://www.canva.com",
+        "chatgpt":           "https://chat.openai.com",
+        "claude":            "https://claude.ai",
+        "gmail":             "https://mail.google.com",
+        "google":            "https://www.google.com",
+        "drive":             "https://drive.google.com",
+        "calendar":          "https://calendar.google.com",
+        "google calendar":   "https://calendar.google.com",
+        "youtube":           "https://www.youtube.com",
+        "github":            "https://github.com",
+        "gitlab":            "https://gitlab.com",
+        "notion web":        "https://www.notion.so",
+        "notion":            "https://www.notion.so",
+        "figma web":         "https://www.figma.com",
+        "figma":             "https://www.figma.com",
+        "spotify web":       "https://open.spotify.com",
+        "netflix":           "https://www.netflix.com",
+        "twitter":           "https://twitter.com",
+        "x":                 "https://x.com",
+        "instagram":         "https://www.instagram.com",
+        "facebook":          "https://www.facebook.com",
+        "linkedin":          "https://www.linkedin.com",
+        "reddit":            "https://www.reddit.com",
+        "maps":              "https://maps.google.com",
+        "google maps":       "https://maps.google.com",
+        "traductor":         "https://translate.google.com",
+        "translate":         "https://translate.google.com",
+        "noticias":          "https://news.google.com",
+        "news":              "https://news.google.com",
+        "stackoverflow":     "https://stackoverflow.com",
+        "stack overflow":    "https://stackoverflow.com",
+        "vercel":            "https://vercel.com",
+        "railway":           "https://railway.app",
+        "supabase":          "https://supabase.com",
+        "heroku":            "https://heroku.com",
+        "chatgpt 4":         "https://chat.openai.com/?model=gpt-4",
+        "openai":            "https://platform.openai.com",
+        "anthropic":         "https://console.anthropic.com",
+        "perplexity":        "https://www.perplexity.ai",
+        "gemini":            "https://gemini.google.com",
+        "trello":            "https://trello.com",
+        "jira":              "https://id.atlassian.com",
+        "asana":             "https://app.asana.com",
+        "replit":            "https://replit.com",
+        "codesandbox":       "https://codesandbox.io",
+        "codepen":           "https://codepen.io",
+        "obsidian web":      "https://obsidian.md",
+        # ── Agrega tus propias URLs aquí ──────────────────────────────────────
+        # "nombre":  "https://url.com",
+    }
+
+    CARPETAS_MAP: dict = {
+        "documentos":   os.path.expanduser("~/Documents"),
+        "documents":    os.path.expanduser("~/Documents"),
+        "descargas":    os.path.expanduser("~/Downloads"),
+        "downloads":    os.path.expanduser("~/Downloads"),
+        "escritorio":   os.path.expanduser("~/Desktop"),
+        "desktop":      os.path.expanduser("~/Desktop"),
+        "imágenes":     os.path.expanduser("~/Pictures"),
+        "imagenes":     os.path.expanduser("~/Pictures"),
+        "pictures":     os.path.expanduser("~/Pictures"),
+        "videos":       os.path.expanduser("~/Videos"),
+        "música":       os.path.expanduser("~/Music"),
+        "musica":       os.path.expanduser("~/Music"),
+        "onedrive":     os.path.expandvars("%OneDrive%"),
+        "notas":        os.path.join(os.path.expanduser("~"), "Documents", "Notas"),
+    }
+
     def __init__(self, parent_lia):
         self.lia     = parent_lia
         self.os_type = platform.system()
@@ -73,6 +146,24 @@ class SystemTools:
         if self._es_comando_simple(ruta):
             return ruta
         return ruta if os.path.exists(ruta) else None
+
+    def es_carpeta_conocida(self, nombre: str) -> bool:
+        return nombre.lower().strip() in self.CARPETAS_MAP
+
+    def abrir_web(self, nombre: str):
+        nombre_lower = nombre.lower().strip()
+        url = self.WEB_MAP.get(nombre_lower)
+        if url:
+            webbrowser.open(url)
+            self.lia.hablar(f"Abriendo {nombre} en el navegador.")
+            self.lia.registrar_actividad(f"Abrió web: {nombre}")
+            if hasattr(self.lia, "contexto"):
+                self.lia.contexto.registrar_apertura_url(url)
+        else:
+            url_google = f"https://www.google.com/search?q={nombre_lower}"
+            webbrowser.open(url_google)
+            self.lia.hablar(f"No tenía la URL de {nombre}. Busqué en Google.")
+            self.lia.registrar_actividad(f"Buscó web: {nombre}")
 
     def open_application(self, nombre: str):
         nombre_limpio = nombre.lower().strip()
@@ -91,6 +182,8 @@ class SystemTools:
                     subprocess.Popen(f'"{ruta}"', shell=True)
                 self.lia.hablar(f"Abriendo {nombre}.")
                 self.lia.registrar_actividad(f"Abrió {nombre}")
+                if hasattr(self.lia, "contexto"):
+                    self.lia.contexto.registrar_apertura_app(nombre_limpio)
                 return
             except Exception as ex:
                 logger.error("Error al lanzar '%s': %s", ruta, ex)
@@ -100,6 +193,8 @@ class SystemTools:
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             self.lia.hablar(f"Intentando abrir {nombre}.")
             self.lia.registrar_actividad(f"Abrió (shell) {nombre}")
+            if hasattr(self.lia, "contexto"):
+                self.lia.contexto.registrar_apertura_app(nombre_limpio)
             return
         except Exception as ex:
             logger.warning("Fallo shell directo para '%s': %s", nombre_limpio, ex)
@@ -117,7 +212,17 @@ class SystemTools:
                         os.startfile(os.path.join(root, archivo))
                         self.lia.hablar(f"Abriendo {archivo.replace('.lnk', '')}.")
                         self.lia.registrar_actividad(f"Abrió {archivo}")
+                        if hasattr(self.lia, "contexto"):
+                            self.lia.contexto.registrar_apertura_app(nombre_limpio)
                         return
+
+        url_conocida = self.WEB_MAP.get(nombre_limpio)
+        if url_conocida:
+            webbrowser.open(url_conocida)
+            self.lia.hablar(f"No lo encontré instalado, lo abrí en el navegador.")
+            if hasattr(self.lia, "contexto"):
+                self.lia.contexto.registrar_apertura_url(url_conocida)
+            return
 
         self.lia.hablar(f"No encontré {nombre} en el sistema.")
         logger.warning("App no encontrada: '%s'", nombre)
@@ -127,6 +232,8 @@ class SystemTools:
             webbrowser.open(url)
             self.lia.hablar(f"Abriendo {nombre}.")
             self.lia.registrar_actividad(f"Abrió {nombre}")
+            if hasattr(self.lia, "contexto"):
+                self.lia.contexto.registrar_apertura_url(url)
         except Exception as ex:
             logger.error("Error al abrir URL '%s': %s", url, ex)
             self.lia.hablar(f"No pude abrir {nombre}.")
@@ -170,7 +277,51 @@ class SystemTools:
             logger.error("Error al abrir carpeta '%s': %s", ruta, ex)
             self.lia.hablar("Error al abrir carpeta.")
 
+    def buscar_en_carpeta(self, termino: str, nombre_carpeta: str):
+        ruta_base = self.CARPETAS_MAP.get(nombre_carpeta.lower().strip())
+        if not ruta_base or not os.path.exists(ruta_base):
+            self.lia.hablar(f"No conozco la carpeta '{nombre_carpeta}'.")
+            return
+
+        termino_lower = termino.lower()
+        encontrados = []
+
+        for root, dirs, files in os.walk(ruta_base):
+            dirs[:] = [d for d in dirs if not d.startswith(".")]
+            for archivo in files:
+                if termino_lower in archivo.lower():
+                    encontrados.append(os.path.join(root, archivo))
+            for carpeta in dirs:
+                if termino_lower in carpeta.lower():
+                    encontrados.append(os.path.join(root, carpeta))
+            if len(encontrados) >= 5:
+                break
+
+        if not encontrados:
+            self.lia.hablar(f"No encontré '{termino}' en {nombre_carpeta}.")
+            return
+
+        if len(encontrados) == 1:
+            ruta = encontrados[0]
+            self.lia.hablar(f"Encontré: {os.path.basename(ruta)}. ¿Lo abro?")
+            if hasattr(self.lia, "contexto"):
+                self.lia.contexto.registrar_apertura_archivo(ruta)
+            try:
+                os.startfile(ruta)
+            except Exception as ex:
+                logger.error("Error al abrir resultado de búsqueda: %s", ex)
+        else:
+            self.lia.hablar(f"Encontré {len(encontrados)} resultados en {nombre_carpeta}:")
+            for r in encontrados[:3]:
+                self.lia.hablar(os.path.basename(r))
+                time.sleep(0.2)
+            if hasattr(self.lia, "contexto"):
+                self.lia.contexto.registrar_apertura_archivo(encontrados[0])
+        self.lia.registrar_actividad(f"Buscó '{termino}' en {nombre_carpeta}")
+
     def modo_estudio(self):
+        if hasattr(self.lia, "contexto"):
+            self.lia.contexto.limpiar_ultimo_modo()
         print("\n📚 MODO ESTUDIO")
         self.lia.hablar("Activando modo estudio.")
         self.open_url("https://chat.openai.com", "ChatGPT")
@@ -179,6 +330,8 @@ class SystemTools:
         self.lia.registrar_actividad("Modo Estudio")
 
     def modo_programacion(self):
+        if hasattr(self.lia, "contexto"):
+            self.lia.contexto.limpiar_ultimo_modo()
         print("\n💻 MODO CÓDIGO")
         self.lia.hablar("Iniciando entorno de programación.")
         self.open_application("vscode")
@@ -189,6 +342,8 @@ class SystemTools:
         self.lia.registrar_actividad("Modo Programación")
 
     def modo_juego(self):
+        if hasattr(self.lia, "contexto"):
+            self.lia.contexto.limpiar_ultimo_modo()
         print("\n🎮 MODO JUEGO")
         self.lia.hablar("Todo listo para jugar.")
         self.open_application("discord")

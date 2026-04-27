@@ -9,12 +9,14 @@ import time
 
 import speech_recognition as sr
 
-from mod_voz     import VozEngine
-from mod_audio   import ClapDetector
-from mod_sistema import SystemTools
-from mod_memoria import MemoryTools
+from mod_voz      import VozEngine
+from mod_audio    import ClapDetector
+from mod_sistema  import SystemTools
+from mod_memoria  import MemoryTools
 from mod_internet import InternetTools
-from mod_dev     import DevTools
+from mod_dev      import DevTools
+from mod_contexto import ContextoConversacional
+from mod_vida     import VidaTools
 
 _SRC_DIR          = os.path.dirname(os.path.abspath(__file__))
 _ROOT_DIR         = os.path.dirname(_SRC_DIR)
@@ -40,11 +42,9 @@ def _configurar_logging():
     )
     fh.setLevel(logging.WARNING)
     fh.setFormatter(fmt)
-
     ch = logging.StreamHandler()
     ch.setLevel(logging.DEBUG)
     ch.setFormatter(fmt)
-
     root = logging.getLogger("lia")
     root.setLevel(logging.DEBUG)
     root.addHandler(fh)
@@ -58,7 +58,7 @@ class LiaAssistant:
 
     MENU_TEXTO = """
 +================================================================+
-|                    ASISTENTE LIA  v5.0                         |
+|                    ASISTENTE LIA  v6.0                         |
 +================================================================+
 |  APLAUSOS                                                      |
 |    1 aplauso   ->  Modo Estudio  (ChatGPT + WhatsApp)          |
@@ -66,41 +66,70 @@ class LiaAssistant:
 |    3 aplausos  ->  Modo Juego    (Discord + TimerResolution)   |
 |                                                                |
 |  COMANDOS DE VOZ  (di "Lia, ...")                              |
-|    "inicio"               -> Rutina de inicio del dia          |
-|    "silencio"             -> Solo texto, sin voz               |
-|    "habla"                -> Reactiva la voz                   |
-|    "pausate"              -> Pausa (3 aplausos p/volver)       |
-|    "apagate"              -> Apaga el asistente                |
-|    "abre [app]"           -> Abre cualquier aplicacion         |
-|    "cierra todo"          -> Cierra apps de trabajo            |
-|    "pendientes"           -> Lee tus pendientes                |
-|    "anota [tarea]"        -> Agrega pendiente                  |
-|    "tarea X lista"        -> Marca tarea X como hecha          |
-|    "pomodoro"             -> Timer 25 min                      |
-|    "pomodoro de 45"       -> Timer con minutos custom          |
-|    "recuerda X en N minutos" -> Recordatorio personal          |
-|    "clima"                -> Dice el clima actual              |
-|    "busca [X]"            -> Busca en Google                   |
-|    "youtube [X]"          -> Busca en YouTube                  |
-|    "nota [clave] [texto]" -> Guarda nota rapida                |
-|    "comandos"             -> Abre este archivo                 |
-|    "recalibra"            -> Recalibra el microfono            |
-|    "sistema"              -> Info de CPU y RAM                 |
-|    "disco"                -> Uso del disco                     |
-|    "bloquea"              -> Bloquea la PC                     |
-|    "git status"           -> Estado del repositorio Git        |
-|    "git push"             -> Push al remoto                    |
-|    "git pull"             -> Pull del remoto                   |
-|  "gracias"                -> Lia responde y cierra comandos    |
+|  -- Control -------------------------------------------------- |
+|    "inicio"                    -> Rutina del dia               |
+|    "silencio" / "habla"        -> Activa/desactiva voz         |
+|    "pausate"                   -> Pausa (3 aplausos p/volver)  |
+|    "apagate"                   -> Apaga el asistente           |
+|    "abortar"                   -> Cierra lo que abrió el modo  |
+|  -- Aplicaciones y Web --------------------------------------- |
+|    "abre [app]"                -> Abre app instalada           |
+|    "abre [X] en internet"      -> Abre en el navegador         |
+|    "cierra todo"               -> Cierra apps de trabajo       |
+|  -- Contexto y Proyectos ------------------------------------- |
+|    "proyecto [nombre]"         -> Establece proyecto activo    |
+|    "abre mi proyecto [nombre]" -> Abre proyecto en VS Code     |
+|    "ejecutalo"                 -> Ejecuta el proyecto activo   |
+|    "abrir de nuevo"            -> Re-abre lo último            |
+|    "cerrar lo último"          -> Cierra el último proceso     |
+|    "qué estoy haciendo"        -> Resumen del contexto actual  |
+|  -- Búsqueda en carpetas ------------------------------------- |
+|    "busca [X] en Documentos"   -> Busca archivo en carpeta     |
+|    "busca [X] en Descargas"    -> Busca en Descargas           |
+|    "busca [X] en Escritorio"   -> Busca en Escritorio          |
+|  -- Pendientes ----------------------------------------------- |
+|    "pendientes"                -> Lee tus pendientes           |
+|    "anota [tarea]"             -> Agrega pendiente             |
+|    "tarea X lista"             -> Marca tarea X como hecha     |
+|  -- Metas y Vida --------------------------------------------- |
+|    "mis metas"                 -> Lee tus metas de Obsidian    |
+|    "agregar meta [X]"          -> Agrega una nueva meta        |
+|    "meta [X] completada"       -> Marca meta como completada   |
+|    "mis hábitos"               -> Estado de hábitos de hoy     |
+|    "hice [hábito]"             -> Marca hábito como hecho      |
+|    "agregar hábito [X]"        -> Registra nuevo hábito        |
+|    "mis proyectos"             -> Lista proyectos activos      |
+|    "agregar proyecto [X]"      -> Registra nuevo proyecto      |
+|    "proyecto [X] listo"        -> Marca proyecto como hecho    |
+|    "resumen de vida"           -> Resumen de metas y hábitos   |
+|  -- Productividad -------------------------------------------- |
+|    "pomodoro"                  -> Timer 25 min                 |
+|    "pomodoro de [N]"           -> Timer N minutos              |
+|    "recuerda [X] en [N] minutos" -> Recordatorio personal      |
+|    "clima"                     -> Dice el clima actual         |
+|  -- Búsquedas web -------------------------------------------- |
+|    "busca [X]"                 -> Busca en Google              |
+|    "youtube [X]"               -> Busca en YouTube             |
+|  -- Notas rápidas -------------------------------------------- |
+|    "nota [clave] [texto]"      -> Guarda nota rapida           |
+|    "recuerda nota [clave]"     -> Lee nota guardada            |
+|  -- Sistema -------------------------------------------------- |
+|    "comandos"                  -> Abre este archivo            |
+|    "recalibra"                 -> Recalibra el microfono       |
+|    "sistema"                   -> Info de CPU y RAM            |
+|    "disco"                     -> Uso del disco                |
+|    "bloquea"                   -> Bloquea la PC                |
+|    "git status/push/pull"      -> Comandos Git                 |
+|  "gracias"                     -> Responde y cierra comandos   |
 +================================================================+
 """
 
     def __init__(self):
         _configurar_logging()
-        logger.info("Iniciando Lia v5.0")
+        logger.info("Iniciando Lia v6.0")
 
-        self.is_active      = True
-        self._shutdown_flag = threading.Event()
+        self.is_active       = True
+        self._shutdown_flag  = threading.Event()
         self.modo_silencioso = False
 
         self._voz = VozEngine(rate=175)
@@ -115,6 +144,8 @@ class LiaAssistant:
         self.memoria  = MemoryTools(self)
         self.internet = InternetTools(self)
         self.dev      = DevTools(self)
+        self.contexto = ContextoConversacional(self)
+        self.vida     = VidaTools(self)
 
         self.memoria._shutdown_flag = self._shutdown_flag
 
@@ -172,7 +203,7 @@ class LiaAssistant:
             logger.warning("No se pudo cerrar notepad: %s", ex)
 
     def _handle_clap_sequence(self, count: int):
-        logger.debug("Secuencia de aplausos recibida: %d", count)
+        logger.debug("Secuencia de aplausos: %d", count)
         if not self.is_active and count >= 3:
             self.is_active = True
             self.detector.set_active(True)
@@ -192,37 +223,56 @@ class LiaAssistant:
         m = self.memoria
         i = self.internet
         d = self.dev
+        c = self.contexto
+        v = self.vida
 
-        self._CMD_EXACTOS: dict[str, callable] = {
-            "pendientes":    m.decir_pendientes,
-            "mis pendientes": m.decir_pendientes,
-            "clima":         i.decir_clima,
-            "tiempo":        i.decir_clima,
-            "sistema":       s.obtener_info_sistema,
-            "cpu":           s.obtener_info_sistema,
-            "ram":           s.obtener_info_sistema,
-            "disco":         s.obtener_uso_disco,
-            "bloquea":       s.bloquear_pc,
-            "bloquear":      s.bloquear_pc,
-            "cierra todo":   s.cerrar_todo,
-            "cerrar todo":   s.cerrar_todo,
-            "git status":    d.estado_git,
-            "estado del repo": d.estado_git,
-            "git push":      d.hacer_push,
-            "git pull":      d.hacer_pull,
-            "ramas":         d.listar_ramas,
-            "comandos":      self.abrir_comandos_txt,
-            "ayuda":         self.mostrar_menu,
-            "menu":          self.mostrar_menu,
-            "menú":          self.mostrar_menu,
-            "notas":         m.listar_notas,
+        self._CMD_EXACTOS: dict = {
+            "pendientes":           m.decir_pendientes,
+            "mis pendientes":       m.decir_pendientes,
+            "clima":                i.decir_clima,
+            "tiempo":               i.decir_clima,
+            "sistema":              s.obtener_info_sistema,
+            "cpu":                  s.obtener_info_sistema,
+            "ram":                  s.obtener_info_sistema,
+            "disco":                s.obtener_uso_disco,
+            "bloquea":              s.bloquear_pc,
+            "bloquear":             s.bloquear_pc,
+            "cierra todo":          s.cerrar_todo,
+            "cerrar todo":          s.cerrar_todo,
+            "git status":           d.estado_git,
+            "estado del repo":      d.estado_git,
+            "git push":             d.hacer_push,
+            "git pull":             d.hacer_pull,
+            "ramas":                d.listar_ramas,
+            "comandos":             self.abrir_comandos_txt,
+            "ayuda":                self.mostrar_menu,
+            "menu":                 self.mostrar_menu,
+            "menú":                 self.mostrar_menu,
+            "notas":                m.listar_notas,
+            "abortar":              c.abortar,
+            "abrir de nuevo":       c.abrir_ultimo,
+            "cerrar lo último":     c.cerrar_ultimo,
+            "qué estoy haciendo":   c.que_estoy_haciendo,
+            "que estoy haciendo":   c.que_estoy_haciendo,
+            "ejecutalo":            c.ejecutar_ultimo,
+            "ejecútalo":            c.ejecutar_ultimo,
+            "mis metas":            v.leer_metas,
+            "metas":                v.leer_metas,
+            "mis hábitos":          v.revisar_habitos,
+            "hábitos":              v.revisar_habitos,
+            "habitos":              v.revisar_habitos,
+            "mis proyectos":        v.estado_proyectos,
+            "proyectos":            v.estado_proyectos,
+            "resumen de vida":      v.resumen_vida,
+            "resumen":              v.resumen_vida,
         }
 
     def _parse_command(self, cmd: str):
         if not cmd.strip():
             return
 
-        logger.debug("Comando recibido: '%s'", cmd)
+        logger.debug("Comando: '%s'", cmd)
+        self.contexto.registrar_comando(cmd)
 
         if "gracias" in cmd:
             self.cerrar_comandos_txt()
@@ -262,20 +312,117 @@ class LiaAssistant:
             self.sistema.cancelar_apagado()
             return
 
+        # ── "abre X en internet" → fuerza apertura web ──────────────────────
+        if " en internet" in cmd or " en el navegador" in cmd or " en web" in cmd:
+            nombre = (cmd
+                      .replace(" en internet", "")
+                      .replace(" en el navegador", "")
+                      .replace(" en web", ""))
+            for trigger in ("abre ", "abrir "):
+                if trigger in nombre:
+                    nombre = nombre.split(trigger, 1)[-1].strip()
+                    break
+            self.sistema.abrir_web(nombre.strip())
+            return
+
+        # ── "abre X" → app primero, si no encuentra → web ───────────────────
         for trigger in ("abre ", "abrir "):
             if trigger in cmd:
-                app = cmd.split(trigger, 1)[-1].strip()
-                if app:
-                    self.sistema.open_application(app)
+                objetivo = cmd.split(trigger, 1)[-1].strip()
+                if objetivo:
+                    self.sistema.open_application(objetivo)
                 else:
                     self.hablar("¿Qué quieres que abra?")
                 return
 
+        # ── Búsqueda en carpeta: "busca X en Documentos" ────────────────────
+        carpetas_conocidas = list(self.sistema.CARPETAS_MAP.keys())
+        if any(k in cmd for k in ("busca ", "buscar ")):
+            for carpeta in carpetas_conocidas:
+                if f" en {carpeta}" in cmd:
+                    termino = (cmd
+                               .replace("busca ", "")
+                               .replace("buscar ", "")
+                               .replace(f" en {carpeta}", "")
+                               .strip())
+                    self.sistema.buscar_en_carpeta(termino, carpeta)
+                    return
+
+        # ── Contexto: proyecto ───────────────────────────────────────────────
+        if "abre mi proyecto" in cmd or "abrir mi proyecto" in cmd:
+            nombre = (cmd.replace("abre mi proyecto", "")
+                        .replace("abrir mi proyecto", "")
+                        .strip())
+            if nombre:
+                self.contexto.abrir_proyecto(nombre)
+            else:
+                self.hablar("¿Qué proyecto quieres abrir?")
+            return
+
+        if cmd.startswith("proyecto ") and "listo" not in cmd and "completado" not in cmd:
+            nombre = cmd.replace("proyecto", "", 1).strip()
+            if nombre:
+                self.contexto.establecer_proyecto(nombre)
+            return
+
+        # ── Vida: metas ──────────────────────────────────────────────────────
+        if "agregar meta" in cmd or "nueva meta" in cmd:
+            texto = (cmd.replace("agregar meta", "")
+                       .replace("nueva meta", "")
+                       .strip().strip(",.-: "))
+            self.vida.agregar_meta(texto) if texto else self.hablar("¿Cuál es la meta?")
+            return
+
+        for kw in ("meta", "objetivo"):
+            if kw in cmd and any(k in cmd for k in ("completada", "lograda", "lista", "hecha")):
+                texto = cmd
+                for k in ("meta", "objetivo", "completada", "lograda", "lista", "hecha"):
+                    texto = texto.replace(k, "")
+                self.vida.completar_meta(texto.strip().strip(",.-: "))
+                return
+
+        # ── Vida: hábitos ────────────────────────────────────────────────────
+        if "agregar hábito" in cmd or "agregar habito" in cmd or "nuevo hábito" in cmd:
+            texto = (cmd.replace("agregar hábito", "")
+                       .replace("agregar habito", "")
+                       .replace("nuevo hábito", "")
+                       .strip().strip(",.-: "))
+            self.vida.agregar_habito(texto) if texto else self.hablar("¿Cuál es el hábito?")
+            return
+
+        if cmd.startswith("hice ") or "completé el hábito" in cmd:
+            habito = (cmd.replace("hice", "")
+                        .replace("completé el hábito", "")
+                        .strip().strip(",.-: "))
+            self.vida.marcar_habito(habito) if habito else self.hablar("¿Qué hábito completaste?")
+            return
+
+        # ── Vida: proyectos ──────────────────────────────────────────────────
+        if "agregar proyecto" in cmd or "nuevo proyecto" in cmd:
+            texto = (cmd.replace("agregar proyecto", "")
+                       .replace("nuevo proyecto", "")
+                       .strip().strip(",.-: "))
+            self.vida.agregar_proyecto(texto) if texto else self.hablar("¿Cuál es el proyecto?")
+            return
+
+        if "proyecto" in cmd and any(k in cmd for k in ("listo", "completado", "terminado", "hecho")):
+            texto = cmd
+            for k in ("proyecto", "listo", "completado", "terminado", "hecho"):
+                texto = texto.replace(k, "")
+            self.vida.completar_proyecto(texto.strip().strip(",.-: "))
+            return
+
+        # ── Pendientes ───────────────────────────────────────────────────────
+        if cmd.strip() == "pendientes" or "mis pendientes" in cmd or (
+            "pendientes" in cmd and not any(k in cmd for k in ("anota", "tarea", "agreg"))
+        ):
+            self.memoria.decir_pendientes()
+            return
+
         for verbo in ("anota", "apunta", "agrega pendiente", "agrega"):
             if verbo in cmd:
                 texto = cmd.split(verbo, 1)[-1].strip().strip(",.-: ")
-                self.memoria.agregar_pendiente(texto) if texto else \
-                    self.hablar("¿Qué quieres que anote?")
+                self.memoria.agregar_pendiente(texto) if texto else self.hablar("¿Qué quieres que anote?")
                 return
 
         for kw in ("lista", "completada", "hecha", "terminada", "completa"):
@@ -284,6 +431,7 @@ class LiaAssistant:
                 self.memoria.completar_tarea(tarea)
                 return
 
+        # ── Notas rápidas ────────────────────────────────────────────────────
         if cmd.startswith("nota "):
             partes = cmd[5:].strip().split(" ", 1)
             if len(partes) == 2:
@@ -296,6 +444,7 @@ class LiaAssistant:
             self.memoria.obtener_nota(cmd.split("recuerda nota ", 1)[-1].strip())
             return
 
+        # ── Pomodoro ─────────────────────────────────────────────────────────
         if "pomodoro" in cmd:
             minutos = 25
             for p in cmd.split():
@@ -305,6 +454,7 @@ class LiaAssistant:
             self.memoria.iniciar_pomodoro(minutos)
             return
 
+        # ── Recordatorio ─────────────────────────────────────────────────────
         if "recuerda" in cmd and " en " in cmd and "nota" not in cmd:
             try:
                 partes  = cmd.split(" en ", 1)
@@ -316,6 +466,7 @@ class LiaAssistant:
                 self.hablar("No entendí el recordatorio.")
             return
 
+        # ── Búsquedas web ────────────────────────────────────────────────────
         for trigger in ("busca ", "buscar "):
             if trigger in cmd:
                 q = cmd.split(trigger, 1)[-1].strip()
@@ -327,16 +478,18 @@ class LiaAssistant:
             self.internet.buscar_youtube(q) if q else self.hablar("¿Qué quieres buscar en YouTube?")
             return
 
+        # ── Recalibración ────────────────────────────────────────────────────
         if "recalibra" in cmd or "calibra" in cmd:
             self.detector.calibrar()
             return
 
+        # ── Tabla de comandos exactos ────────────────────────────────────────
         fn = self._CMD_EXACTOS.get(cmd.strip())
         if fn:
             try:
                 fn()
             except Exception as ex:
-                logger.error("Error ejecutando comando '%s': %s", cmd, ex)
+                logger.error("Error ejecutando '%s': %s", cmd, ex)
                 self.hablar("Hubo un error al ejecutar ese comando.")
             return
 
@@ -403,7 +556,7 @@ class LiaAssistant:
 if __name__ == "__main__":
     print("""
 +=======================================+
-|       ASISTENTE  LIA  v4.2.1          |
+|       ASISTENTE  LIA  v4.3.0          |
 +=======================================+
 """)
     LiaAssistant().run()
