@@ -69,24 +69,24 @@ class MemoryTools:
     def agregar_pendiente(self, texto: str):
         texto = texto.strip().rstrip(".").strip()
         if not texto:
-            self.lia.hablar("No entendí qué quieres anotar.")
+            self.lia.hablar(self.lia.persona.no_entendi())
             return
         try:
             self._asegurar_pendientes()
             with open(PENDIENTES_PATH, "a", encoding="utf-8") as f:
                 f.write(f"\n- [ ] {texto}\n")
-            self.lia.hablar(f"Listo, anoté: {texto}.")
+            self.lia.hablar(self.lia.persona.pendiente_agregado(texto))
             self.registrar_actividad("Agregó pendiente")
         except Exception as ex:
             logger.error("Error al agregar pendiente: %s", ex)
-            self.lia.hablar("No pude guardar el pendiente.")
+            self.lia.hablar(self.lia.persona.error_generico("guardar el pendiente"))
 
     def decir_pendientes(self, limite: int = 5):
         logger.debug("Leyendo pendientes de '%s'.", PENDIENTES_PATH)
         try:
             if not os.path.exists(PENDIENTES_PATH):
                 self._asegurar_pendientes()
-                self.lia.hablar("No encontré tu lista de pendientes. Creé un archivo nuevo.")
+                self.lia.hablar(f"No encontré su lista, {self.lia.persona.nombre}. Creé un archivo nuevo.")
                 return
             pendientes = []
             with open(PENDIENTES_PATH, "r", encoding="utf-8-sig") as f:
@@ -96,10 +96,10 @@ class MemoryTools:
                         pendientes.append(item)
             logger.debug("Pendientes encontrados: %d", len(pendientes))
             if not pendientes:
-                self.lia.hablar("No tienes tareas pendientes.")
+                self.lia.hablar(self.lia.persona.sin_pendientes())
                 return
             total = len(pendientes)
-            self.lia.hablar(f"Tienes {total} pendiente{'s' if total != 1 else ''}.")
+            self.lia.hablar(f"Tiene {total} pendiente{'s' if total != 1 else ''}, {self.lia.persona.nombre}.")
             for item in pendientes[:limite]:
                 self.lia.hablar(item)
                 time.sleep(0.25)
@@ -107,12 +107,12 @@ class MemoryTools:
                 self.lia.hablar(f"Y {total - limite} tarea{'s' if total - limite != 1 else ''} más.")
         except Exception as ex:
             logger.error("Error al leer pendientes: %s", ex)
-            self.lia.hablar("No pude leer los pendientes.")
+            self.lia.hablar(self.lia.persona.error_generico("leer los pendientes"))
 
     def completar_tarea(self, texto_tarea: str):
         texto_tarea = texto_tarea.lower().strip()
         if not texto_tarea:
-            self.lia.hablar("Dime qué tarea completaste.")
+            self.lia.hablar(f"Dígame qué tarea completó, {self.lia.persona.nombre}.")
             return
         try:
             self._asegurar_pendientes()
@@ -133,13 +133,13 @@ class MemoryTools:
             if encontrada:
                 with open(PENDIENTES_PATH, "w", encoding="utf-8") as f:
                     f.writelines(nuevas)
-                self.lia.hablar(f"Marqué '{nombre_real}' como completada.")
+                self.lia.hablar(self.lia.persona.tarea_completada(nombre_real))
                 self.registrar_actividad("Completó tarea")
             else:
-                self.lia.hablar(f"No encontré ninguna tarea que diga '{texto_tarea}'.")
+                self.lia.hablar(f"No encontré ninguna tarea que coincida con '{texto_tarea}', {self.lia.persona.nombre}.")
         except Exception as ex:
             logger.error("Error al completar tarea: %s", ex)
-            self.lia.hablar("No pude actualizar los pendientes.")
+            self.lia.hablar(self.lia.persona.error_generico("actualizar los pendientes"))
 
     def guardar_nota(self, clave: str, contenido: str):
         clave = clave.lower().strip()
@@ -151,24 +151,24 @@ class MemoryTools:
             "timestamp": datetime.datetime.now().isoformat(),
         }
         self._guardar_json(MEMORIA_PATH, self.memoria)
-        self.lia.hablar(f"Guardé nota: {clave}.")
+        self.lia.hablar(f"Guardé nota '{clave}', {self.lia.persona.nombre}.")
         self.registrar_actividad(f"Guardó nota: {clave}")
 
     def obtener_nota(self, clave: str):
         clave = clave.lower().strip()
         nota  = self.memoria["notas"].get(clave)
         if nota:
-            self.lia.hablar(f"Tu nota: {nota['contenido']}")
+            self.lia.hablar(f"Su nota: {nota['contenido']}")
             return nota["contenido"]
-        self.lia.hablar(f"No encontré nota: {clave}.")
+        self.lia.hablar(f"No encontré nota '{clave}', {self.lia.persona.nombre}.")
         return None
 
     def listar_notas(self):
         notas = self.memoria.get("notas", {})
         if not notas:
-            self.lia.hablar("No tienes notas guardadas.")
+            self.lia.hablar(f"No tiene notas guardadas, {self.lia.persona.nombre}.")
             return
-        self.lia.hablar(f"Tienes {len(notas)} nota{'s' if len(notas) != 1 else ''}.")
+        self.lia.hablar(f"Tiene {len(notas)} nota{'s' if len(notas) != 1 else ''}.")
         for clave in list(notas.keys())[:10]:
             self.lia.hablar(clave)
             time.sleep(0.2)
@@ -178,27 +178,27 @@ class MemoryTools:
         if clave in self.memoria.get("notas", {}):
             del self.memoria["notas"][clave]
             self._guardar_json(MEMORIA_PATH, self.memoria)
-            self.lia.hablar(f"Eliminé nota: {clave}.")
+            self.lia.hablar(f"Eliminé nota '{clave}'.")
             self.registrar_actividad(f"Eliminó nota: {clave}")
         else:
-            self.lia.hablar("No encontré esa nota.")
+            self.lia.hablar(f"No encontré esa nota, {self.lia.persona.nombre}.")
 
     def iniciar_pomodoro(self, minutos: int = 25):
         if self.pomodoro_thread and self.pomodoro_thread.is_alive():
-            self.lia.hablar("Ya hay un pomodoro corriendo.")
+            self.lia.hablar(f"Ya hay un pomodoro corriendo, {self.lia.persona.nombre}.")
             return
 
         def _run():
-            self.lia.hablar(f"Pomodoro de {minutos} minutos iniciado.")
+            self.lia.hablar(self.lia.persona.pomodoro_inicio(minutos))
             for _ in range(minutos * 60):
                 if self._shutdown_flag and self._shutdown_flag.is_set():
                     return
                 time.sleep(1)
             if not (self._shutdown_flag and self._shutdown_flag.is_set()):
-                self.lia.hablar("Tiempo. El pomodoro terminó. Toma un descanso.")
+                self.lia.hablar(self.lia.persona.pomodoro_fin())
                 try:
                     self.lia.sistema.notificar("Lia – Pomodoro",
-                                               f"{minutos} minutos completados. Descansa 5.")
+                                               f"{minutos} minutos completados. Descanse 5.")
                 except Exception as ex:
                     logger.warning("Error al notificar pomodoro: %s", ex)
                 self.registrar_actividad("Pomodoro completado")
@@ -218,7 +218,7 @@ class MemoryTools:
                     return
                 time.sleep(1)
             if not (self._shutdown_flag and self._shutdown_flag.is_set()):
-                self.lia.hablar(f"Recordatorio: {mensaje}.")
+                self.lia.hablar(self.lia.persona.recordatorio_disparado(mensaje))
                 try:
                     self.lia.sistema.notificar("Lia – Recordatorio", mensaje)
                 except Exception as ex:
@@ -226,5 +226,5 @@ class MemoryTools:
                 self.registrar_actividad(f"Recordatorio disparado: {mensaje}")
 
         threading.Thread(target=_run, daemon=True).start()
-        self.lia.hablar(f"Listo, te recuerdo '{mensaje}' en {minutos:.0f} minutos.")
+        self.lia.hablar(self.lia.persona.recordatorio_creado(mensaje, minutos))
         self.registrar_actividad(f"Programó recordatorio: {mensaje}")

@@ -28,10 +28,10 @@ class InternetTools:
         try:
             resp  = requests.get("https://wttr.in/?format=3&lang=es", timeout=6)
             texto = resp.text.strip()
-            self.lia.hablar(f"El clima ahora: {texto}.")
+            self.lia.hablar(f"El clima ahora: {texto}, {self.lia.persona.nombre}.")
         except Exception as ex:
             logger.error("Error al consultar clima: %s", ex)
-            self.lia.hablar("No pude consultar el clima. Revisa tu conexión.")
+            self.lia.hablar(f"No pude consultar el clima, {self.lia.persona.nombre}. Revise su conexión.")
 
     def _clima_corto(self) -> str:
         if not _REQUESTS:
@@ -45,7 +45,7 @@ class InternetTools:
 
     def rutina_inicio(self):
         try:
-            self.lia.hablar("Iniciando rutina.")
+            self.lia.hablar(f"Iniciando rutina, {self.lia.persona.nombre}. Veamos cómo va el día.")
         except Exception:
             pass
 
@@ -87,7 +87,7 @@ class InternetTools:
     def buscar_youtube(self, consulta: str):
         url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(consulta)}"
         webbrowser.open(url)
-        self.lia.hablar(f"Buscando {consulta} en YouTube.")
+        self.lia.hablar(f"Buscando {consulta} en YouTube, {self.lia.persona.nombre}.")
         self.lia.registrar_actividad(f"Buscó en YouTube: {consulta}")
 
     def buscar_wikipedia(self, consulta: str):

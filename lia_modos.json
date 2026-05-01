@@ -1,0 +1,28 @@
+{
+  "modos": [
+    {
+      "aplausos": 1,
+      "nombre": "Modo Estudio",
+      "descripcion": "ChatGPT + WhatsApp Web",
+      "tipo": "builtin",
+      "accion": "modo_estudio",
+      "apps_display": ["ChatGPT", "WhatsApp Web"]
+    },
+    {
+      "aplausos": 2,
+      "nombre": "Modo Código",
+      "descripcion": "VS Code + GitHub + Spotify",
+      "tipo": "builtin",
+      "accion": "modo_programacion",
+      "apps_display": ["VS Code", "GitHub", "Spotify"]
+    },
+    {
+      "aplausos": 3,
+      "nombre": "Modo Juego",
+      "descripcion": "Discord + TimerResolution",
+      "tipo": "builtin",
+      "accion": "modo_juego",
+      "apps_display": ["Discord", "TimerResolution"]
+    }
+  ]
+}

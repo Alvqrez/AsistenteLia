@@ -155,20 +155,20 @@ class SystemTools:
         url = self.WEB_MAP.get(nombre_lower)
         if url:
             webbrowser.open(url)
-            self.lia.hablar(f"Abriendo {nombre} en el navegador.")
+            self.lia.hablar(self.lia.persona.abriendo_app(nombre))
             self.lia.registrar_actividad(f"Abrió web: {nombre}")
             if hasattr(self.lia, "contexto"):
                 self.lia.contexto.registrar_apertura_url(url)
         else:
             url_google = f"https://www.google.com/search?q={nombre_lower}"
             webbrowser.open(url_google)
-            self.lia.hablar(f"No tenía la URL de {nombre}. Busqué en Google.")
+            self.lia.hablar(f"No tenía la URL de {nombre}, {self.lia.persona.nombre}. Lo busqué en Google.")
             self.lia.registrar_actividad(f"Buscó web: {nombre}")
 
     def open_application(self, nombre: str):
         nombre_limpio = nombre.lower().strip()
         if not nombre_limpio:
-            self.lia.hablar("No entendí qué aplicación abrir.")
+            self.lia.hablar(self.lia.persona.no_entendi())
             return
 
         ruta = self._resolver_ruta(nombre_limpio)
@@ -180,7 +180,7 @@ class SystemTools:
                     subprocess.Popen(ruta, shell=True)
                 else:
                     subprocess.Popen(f'"{ruta}"', shell=True)
-                self.lia.hablar(f"Abriendo {nombre}.")
+                self.lia.hablar(self.lia.persona.abriendo_app(nombre))
                 self.lia.registrar_actividad(f"Abrió {nombre}")
                 if hasattr(self.lia, "contexto"):
                     self.lia.contexto.registrar_apertura_app(nombre_limpio)
@@ -191,7 +191,7 @@ class SystemTools:
         try:
             subprocess.Popen(nombre_limpio, shell=True,
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            self.lia.hablar(f"Intentando abrir {nombre}.")
+            self.lia.hablar(self.lia.persona.abriendo_app(nombre))
             self.lia.registrar_actividad(f"Abrió (shell) {nombre}")
             if hasattr(self.lia, "contexto"):
                 self.lia.contexto.registrar_apertura_app(nombre_limpio)
@@ -210,7 +210,7 @@ class SystemTools:
                 for archivo in files:
                     if nombre_limpio in archivo.lower() and archivo.endswith(".lnk"):
                         os.startfile(os.path.join(root, archivo))
-                        self.lia.hablar(f"Abriendo {archivo.replace('.lnk', '')}.")
+                        self.lia.hablar(self.lia.persona.abriendo_app(archivo.replace(".lnk", "")))
                         self.lia.registrar_actividad(f"Abrió {archivo}")
                         if hasattr(self.lia, "contexto"):
                             self.lia.contexto.registrar_apertura_app(nombre_limpio)
@@ -219,34 +219,33 @@ class SystemTools:
         url_conocida = self.WEB_MAP.get(nombre_limpio)
         if url_conocida:
             webbrowser.open(url_conocida)
-            self.lia.hablar(f"No lo encontré instalado, lo abrí en el navegador.")
+            self.lia.hablar(f"No lo encontré instalado, {self.lia.persona.nombre}. Lo abrí en el navegador.")
             if hasattr(self.lia, "contexto"):
                 self.lia.contexto.registrar_apertura_url(url_conocida)
             return
 
-        self.lia.hablar(f"No encontré {nombre} en el sistema.")
+        self.lia.hablar(self.lia.persona.app_no_encontrada(nombre))
         logger.warning("App no encontrada: '%s'", nombre)
 
     def open_url(self, url: str, nombre: str):
         try:
             webbrowser.open(url)
-            self.lia.hablar(f"Abriendo {nombre}.")
+            self.lia.hablar(self.lia.persona.abriendo_app(nombre))
             self.lia.registrar_actividad(f"Abrió {nombre}")
             if hasattr(self.lia, "contexto"):
                 self.lia.contexto.registrar_apertura_url(url)
         except Exception as ex:
             logger.error("Error al abrir URL '%s': %s", url, ex)
-            self.lia.hablar(f"No pude abrir {nombre}.")
+            self.lia.hablar(self.lia.persona.error_generico(f"abrir {nombre}"))
 
     def cerrar_todo(self):
-        print("\n🛑 CERRANDO TODO")
         procesos = ["chrome.exe", "msedge.exe", "firefox.exe",
                     "Code.exe", "Spotify.exe", "Discord.exe",
                     "WhatsApp.exe", "Teams.exe"]
         for p in procesos:
             subprocess.run(["taskkill", "/f", "/im", p],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        self.lia.hablar("Cerré todas las aplicaciones.")
+        self.lia.hablar(self.lia.persona.cerrando_todo())
         self.lia.registrar_actividad("Cerró Todo")
 
     def abrir_desde_descargas(self, nombre: str):
@@ -255,7 +254,7 @@ class SystemTools:
             for archivo in files:
                 if nombre.lower() in archivo.lower():
                     os.startfile(os.path.join(root, archivo))
-                    self.lia.hablar(f"Abriendo {archivo}.")
+                    self.lia.hablar(self.lia.persona.abriendo_app(archivo))
                     self.lia.registrar_actividad(f"Abrió desde Descargas: {archivo}")
                     return
         logger.info("'%s' no encontrado en Descargas.", nombre)
@@ -322,8 +321,7 @@ class SystemTools:
     def modo_estudio(self):
         if hasattr(self.lia, "contexto"):
             self.lia.contexto.limpiar_ultimo_modo()
-        print("\n📚 MODO ESTUDIO")
-        self.lia.hablar("Activando modo estudio.")
+        self.lia.hablar(self.lia.persona.modo_estudio())
         self.open_url("https://chat.openai.com", "ChatGPT")
         time.sleep(0.4)
         self.open_url("https://web.whatsapp.com", "WhatsApp")
@@ -332,8 +330,7 @@ class SystemTools:
     def modo_programacion(self):
         if hasattr(self.lia, "contexto"):
             self.lia.contexto.limpiar_ultimo_modo()
-        print("\n💻 MODO CÓDIGO")
-        self.lia.hablar("Iniciando entorno de programación.")
+        self.lia.hablar(self.lia.persona.modo_codigo())
         self.open_application("vscode")
         time.sleep(0.4)
         self.open_url("https://github.com", "GitHub")
@@ -344,8 +341,7 @@ class SystemTools:
     def modo_juego(self):
         if hasattr(self.lia, "contexto"):
             self.lia.contexto.limpiar_ultimo_modo()
-        print("\n🎮 MODO JUEGO")
-        self.lia.hablar("Todo listo para jugar.")
+        self.lia.hablar(self.lia.persona.modo_juego())
         self.open_application("discord")
         time.sleep(0.5)
         self.abrir_desde_descargas("TimerResolution")
@@ -358,12 +354,11 @@ class SystemTools:
         try:
             cpu = psutil.cpu_percent(interval=1)
             ram = psutil.virtual_memory()
-            self.lia.hablar(f"CPU al {cpu:.0f} por ciento.")
-            self.lia.hablar(f"RAM al {ram.percent:.0f} por ciento.")
+            self.lia.hablar(self.lia.persona.cpu_ram(cpu, ram.percent))
             self.lia.registrar_actividad("Consultó info del sistema")
         except Exception as ex:
             logger.error("Error al leer sistema: %s", ex)
-            self.lia.hablar("Error al leer el sistema.")
+            self.lia.hablar(self.lia.persona.error_generico("leer el sistema"))
 
     def obtener_uso_disco(self):
         if not _PSUTIL:
@@ -407,12 +402,12 @@ class SystemTools:
         if self.os_type != "Windows":
             self.lia.hablar("Bloquear solo funciona en Windows.")
             return
-        self.lia.hablar("Bloqueando PC.")
+        self.lia.hablar(self.lia.persona.bloqueando_pc())
         subprocess.run(["rundll32.exe", "user32.dll,LockWorkStation"])
         self.lia.registrar_actividad("Bloqueó la PC")
 
     def apagar_pc(self, segundos: int = 60):
-        self.lia.hablar(f"La PC se apagará en {segundos} segundos.")
+        self.lia.hablar(f"La PC se apagará en {segundos} segundos, {self.lia.persona.nombre}.")
         if self.os_type == "Windows":
             subprocess.run(["shutdown", "/s", "/t", str(segundos)],
                            stdout=subprocess.DEVNULL)

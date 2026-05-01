@@ -1,271 +1,192 @@
 #!/usr/bin/env python3
 
-import difflib
-import logging
-import logging.handlers
 import os
-import queue
-import random
-import re
+import sys
 import threading
 import time
 
 import pyttsx3
 import speech_recognition as sr
 
-from mod_audio        import ClapDetector
-from mod_sistema      import SystemTools
-from mod_memoria      import MemoryTools
-from mod_internet     import InternetTools
-from mod_dev          import DevTools
-from mod_sonidos      import (sonido_inicio, sonido_escuchando,
-                               sonido_confirmacion, sonido_error,
-                               sonido_apagado, sonido_cancelar)
-from mod_recordatorios import RecordatoriosTools
-from mod_dashboard     import mostrar_dashboard
+from mod_audio         import ClapDetector
+from mod_sistema       import SystemTools
+from mod_memoria       import MemoryTools
+from mod_internet      import InternetTools
+from mod_dev           import DevTools
+from mod_voz           import VozEngine
+from mod_personalidad  import Persona
+from mod_productividad import ProductividadTools
+from mod_focus         import FocusTools
+from mod_resumen       import ResumenTools
 
 _SRC_DIR          = os.path.dirname(os.path.abspath(__file__))
 _ROOT_DIR         = os.path.dirname(_SRC_DIR)
 COMANDOS_TXT_PATH = os.path.join(_ROOT_DIR, "lia_comandos.txt")
-LOG_PATH          = os.path.join(_ROOT_DIR, "lia_errores.log")
 
-_SENTINEL = object()
-
-_GRACIAS = [
-    "Para eso estoy, con gusto.",
-    "De nada, cuando quieras.",
-    "Es un placer ayudarte.",
-    "Sin problema, aquí estaré.",
-    "Claro que sí, para eso soy.",
-]
-
-_WAKE_WORDS = {
-    "lia", "lía", "lea", "leah", "lear", "liar", "lia,", "lía,",
-    "lia:", "lía:", "oye lia", "oye lía", "hey lia", "hey lía",
+_SINONIMOS_VSCODE = {
+    "necesito programar", "quiero programar", "a programar",
+    "vscode", "vs code", "visual studio", "código", "editor",
+    "modo código", "modo programacion", "a codear", "codear",
+    "abre el editor", "entorno de desarrollo"
+}
+_SINONIMOS_ESTUDIO = {
+    "modo estudio", "a estudiar", "necesito estudiar",
+    "quiero estudiar", "tiempo de estudiar", "hora de estudiar",
+    "a trabajar", "modo trabajo", "chatgpt y whatsapp"
+}
+_SINONIMOS_JUEGO = {
+    "modo juego", "a jugar", "quiero jugar", "hora de jugar",
+    "gaming", "videojuegos", "necesito discord", "abre discord"
+}
+_SINONIMOS_PENDIENTES = {
+    "pendientes", "mis pendientes", "qué tengo pendiente",
+    "que tengo pendiente", "mis tareas", "lista de tareas",
+    "qué debo hacer", "que debo hacer"
+}
+_SINONIMOS_CLIMA = {
+    "clima", "tiempo", "cómo está el clima", "como esta el clima",
+    "qué temperatura hace", "que temperatura hace",
+    "va a llover", "llueve hoy", "hace frío", "hace calor"
+}
+_SINONIMOS_INICIO = {
+    "inicio", "rutina", "buenos días", "buen día", "buenas",
+    "empecemos", "comencemos", "arranquemos el día",
+    "empezar el día", "empezar el dia"
+}
+_SINONIMOS_SISTEMA = {
+    "sistema", "cpu", "ram", "recursos", "cómo está la pc",
+    "como esta la pc", "uso del sistema", "rendimiento"
+}
+_SINONIMOS_PAUSA = {
+    "pausate", "pausa", "detente", "para", "descansa",
+    "modo descanso", "silencia los aplausos"
+}
+_SINONIMOS_SILENCIO_VOZ = {
+    "silencio", "cállate", "callate", "modo silencioso",
+    "sin voz", "no hables", "mute"
 }
 
-_COMANDOS_CONOCIDOS = [
-    "comandos", "inicio", "rutina", "silencio", "habla",
-    "pausate", "apagate", "abre", "cierra todo", "pendientes",
-    "anota", "apunta", "pomodoro", "recuerda", "clima", "tiempo",
-    "busca", "youtube", "recalibra", "sistema", "disco", "bloquea",
-    "git status", "git push", "git pull", "ramas", "ayuda",
-    "recordatorios", "mis recordatorios", "resumen",
-]
 
-
-def _configurar_logging():
-    fmt = logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(name)s — %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    fh = logging.handlers.RotatingFileHandler(
-        LOG_PATH, maxBytes=1_000_000, backupCount=3, encoding="utf-8"
-    )
-    fh.setLevel(logging.WARNING)
-    fh.setFormatter(fmt)
-
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG)
-    ch.setFormatter(fmt)
-
-    root = logging.getLogger("lia")
-    root.setLevel(logging.DEBUG)
-    root.addHandler(fh)
-    root.addHandler(ch)
-
-
-logger = logging.getLogger("lia.core")
-
-
-def _contiene_wake_word(texto: str) -> bool:
-    t = texto.lower().strip()
-    for ww in _WAKE_WORDS:
-        if ww in t:
-            return True
-    palabras = t.split()
-    for p in palabras:
-        ratio = difflib.SequenceMatcher(None, p, "lia").ratio()
-        if ratio >= 0.80:
-            return True
-    return False
-
-
-def _limpiar_wake_word(texto: str) -> str:
-    t = texto.lower()
-    for ww in sorted(_WAKE_WORDS, key=len, reverse=True):
-        t = t.replace(ww, "")
-    t = re.sub(r"^[,.\s]+", "", t)
-    return t.strip()
-
-
-def _fuzzy_match_comando(cmd: str) -> str:
-    palabras = cmd.split()
-    for i in range(len(palabras), 0, -1):
-        fragmento = " ".join(palabras[:i])
-        matches = difflib.get_close_matches(fragmento, _COMANDOS_CONOCIDOS,
-                                            n=1, cutoff=0.72)
-        if matches:
-            resto = " ".join(palabras[i:])
-            return f"{matches[0]} {resto}".strip()
-    return cmd
+def _coincide(cmd: str, sinonimos: set) -> bool:
+    cmd_l = cmd.lower()
+    return any(s in cmd_l for s in sinonimos)
 
 
 class LiaAssistant:
 
     MENU_TEXTO = """
-+================================================================+
-|                    ASISTENTE LIA  v7.0                         |
-+================================================================+
-|  WAKE WORD: "Lia, ..."  (o aplausos)                          |
-|                                                                |
-|  APLAUSOS                                                      |
-|    1 aplauso   ->  Modo Estudio  (ChatGPT + WhatsApp)          |
-|    2 aplausos  ->  Modo Codigo   (VS Code + GitHub + Spotify)  |
-|    3 aplausos  ->  Modo Juego    (Discord + TimerResolution)   |
-|                                                                |
-|  COMANDOS DE VOZ (di "Lia, ...")                               |
-|    "inicio"                    -> Rutina del dia + dashboard   |
-|    "silencio" / "habla"        -> Activa/desactiva voz         |
-|    "pausate"                   -> Pausa                        |
-|    "apagate"                   -> Apaga el asistente           |
-|    "abre [app]"                -> Abre aplicacion              |
-|    "cierra todo"               -> Cierra apps de trabajo       |
-|    "pendientes"                -> Lee tus pendientes           |
-|    "anota [tarea]"             -> Agrega pendiente             |
-|    "tarea X lista"             -> Marca tarea X como hecha     |
-|    "pomodoro [N]"              -> Timer de N minutos           |
-|    "recuerda [X] el [fecha]"   -> Recordatorio por fecha       |
-|    "recuerda [X] en N minutos" -> Recordatorio por minutos     |
-|    "recordatorios"             -> Lee tus recordatorios        |
-|    "clima"                     -> Dice el clima actual         |
-|    "busca [X]"                 -> Busca en Google              |
-|    "youtube [X]"               -> Busca en YouTube             |
-|    "nota [clave] [texto]"      -> Guarda nota rapida           |
-|    "comandos"                  -> Abre este archivo            |
-|    "recalibra"                 -> Recalibra el microfono       |
-|    "sistema"                   -> CPU y RAM                    |
-|    "disco"                     -> Uso del disco                |
-|    "bloquea"                   -> Bloquea la PC                |
-|    "git status/push/pull"      -> Comandos Git                 |
-|    "gracias"                   -> Responde amablemente         |
-+================================================================+
++==============================================================+
+|                   ASISTENTE LIA  v9.0                        |
++==============================================================+
+|  APLAUSOS                                                    |
+|    1 aplauso   ->  Modo Estudio  (ChatGPT + WhatsApp)        |
+|    2 aplausos  ->  Modo Codigo   (VS Code + GitHub + Spotify)|
+|    3 aplausos  ->  Modo Juego    (Discord + TimerResolution) |
+|                                                              |
+|  COMANDOS Y VARIACIONES  (di "Lia, ...")                     |
+|  -- Modos rápidos ---                                        |
+|    "necesito programar" / "a codear" / "modo código"         |
+|    "a estudiar" / "modo estudio" / "tiempo de estudiar"      |
+|    "a jugar" / "gaming" / "modo juego"                       |
+|  -- Rutina ---                                               |
+|    "inicio" / "buenos días" / "empecemos"                    |
+|  -- Voz ---                                                  |
+|    "silencio" / "cállate" / "mute"                           |
+|    "habla" / "activa voz"                                    |
+|  -- Control ---                                              |
+|    "pausate" / "detente" / "descansa"                        |
+|    "apagate"                                                 |
+|  -- Aplicaciones ---                                         |
+|    "abre [app]"                                              |
+|    "cierra todo"                                             |
+|  -- Pendientes ---                                           |
+|    "pendientes" / "mis tareas" / "qué debo hacer"            |
+|    "anota [tarea]"                                           |
+|    "tarea X lista"                                           |
+|  -- Dev ---                                                  |
+|    "crea proyecto React en [carpeta]"                        |
+|    "git status / push / pull"                                |
+|  -- Productividad ---                                        |
+|    "pomodoro [N]"                                            |
+|    "recuerda X en N minutos"                                 |
+|    "clima" / "cómo está el clima" / "va a llover"            |
+|  -- Sistema ---                                              |
+|    "sistema" / "cpu" / "rendimiento"                         |
+|    "disco"                                                   |
+|    "bloquea"                                                 |
+|  -- Internet ---                                             |
+|    "busca [X]"                                               |
+|    "youtube [X]"                                             |
+|  -- Notas ---                                                |
+|    "nota [clave] [texto]"                                    |
+|    "comandos"                                                |
+|    "gracias"                                                 |
++==============================================================+
 """
 
     def __init__(self):
-        _configurar_logging()
-        logger.info("Iniciando Lia v7.0")
-
         self.is_active       = True
         self._shutdown_flag  = threading.Event()
-        self.modo_silencioso = False
-        self.lia_hablando    = False
+        self._gui_window     = None
 
-        self._tts_queue  = queue.Queue()
-        self._tts_voice_id = None
-        self._tts_rate   = 175
-        self._tts_thread = threading.Thread(target=self._tts_loop,
-                                            daemon=True, name="LiaTTS")
-        self._tts_thread.start()
-        self._detectar_voz_espanol()
+        # Personalidad J.A.R.V.I.S.
+        self.persona = Persona(nombre="Leonardo")
+
+        self.voz = VozEngine(
+            on_speak_start=lambda: self.detector.set_lia_hablando(True) if hasattr(self, 'detector') else None,
+            on_speak_end=lambda: self.detector.set_lia_hablando(False) if hasattr(self, 'detector') else None
+        )
 
         self.recognizer = sr.Recognizer()
         self.microphone = sr.Microphone()
-        self.recognizer.pause_threshold          = 1.0
-        self.recognizer.non_speaking_duration    = 0.5
+        self.recognizer.pause_threshold          = 1.1
+        self.recognizer.non_speaking_duration    = 0.6
         self.recognizer.dynamic_energy_threshold = True
 
-        self.sistema      = SystemTools(self)
-        self.memoria      = MemoryTools(self)
-        self.internet     = InternetTools(self)
-        self.dev          = DevTools(self)
-        self.recordatorios = RecordatoriosTools(self)
+        self.sistema       = SystemTools(self)
+        self.memoria       = MemoryTools(self)
+        self.internet      = InternetTools(self)
+        self.dev           = DevTools(self)
+        self.productividad = ProductividadTools(self)
+        self.focus         = FocusTools(self)
+        self.resumen       = ResumenTools(self)
 
-        self.memoria._shutdown_flag        = self._shutdown_flag
-        self.recordatorios._shutdown       = self._shutdown_flag
+        self.memoria._shutdown_flag = self._shutdown_flag
 
         self.detector = ClapDetector(on_sequence=self._handle_clap_sequence)
 
         self.detector.calibrar()
         self._generar_txt_comandos()
-
-        sonido_inicio()
-        self.hablar("Hola, aquí estoy.")
-        self.mostrar_menu()
-
-        mostrar_dashboard(lia=self, auto_close_ms=20000)
-
-    def _detectar_voz_espanol(self):
-        try:
-            import pythoncom
-            pythoncom.CoInitialize()
-        except Exception:
-            pass
-        try:
-            tmp = pyttsx3.init("sapi5")
-            for v in tmp.getProperty("voices"):
-                if "spanish" in v.name.lower() or "mexico" in v.name.lower():
-                    self._tts_voice_id = v.id
-                    break
-            tmp.stop()
-            del tmp
-        except Exception as ex:
-            logger.warning("No se pudo detectar voz en español: %s", ex)
-
-    def _tts_loop(self):
-        try:
-            import pythoncom
-            pythoncom.CoInitialize()
-        except Exception:
-            pass
-
-        while True:
-            item = self._tts_queue.get()
-            if item is _SENTINEL:
-                break
-            self.lia_hablando = True
-            try:
-                self.detector.set_lia_hablando(True)
-            except Exception:
-                pass
-            try:
-                engine = pyttsx3.init("sapi5")
-                engine.setProperty("rate", self._tts_rate)
-                if self._tts_voice_id:
-                    engine.setProperty("voice", self._tts_voice_id)
-                engine.say(item)
-                engine.runAndWait()
-                engine.stop()
-                del engine
-                time.sleep(0.08)
-            except Exception as ex:
-                logger.error("❌ Error TTS al decir '%s': %s", item[:40], ex)
-                print(f"❌ Error TTS: {ex}")
-            finally:
-                self.lia_hablando = False
-                try:
-                    self.detector.set_lia_hablando(False)
-                except Exception:
-                    pass
+        self.hablar(self.persona.saludo_inicio())
 
     def hablar(self, texto: str):
-        print(f"🗣️  Lia: {texto}")
-        if self.modo_silencioso:
-            return
-        self._tts_queue.put(texto)
+        print(f"Lia: {texto}")
+        if self._gui_window:
+            try:
+                self._gui_window.signal_log.emit(f"🗣 {texto}")
+            except Exception:
+                pass
+
+        self.voz.decir(texto)
 
     def registrar_actividad(self, actividad: str):
         self.memoria.registrar_actividad(actividad)
+        if self._gui_window:
+            try:
+                self._gui_window.signal_log.emit(f"✓ {actividad}")
+            except Exception:
+                pass
 
     def mostrar_menu(self):
-        print(self.MENU_TEXTO)
+        # El menú está en lia_comandos.txt. No se imprime en terminal.
+        pass
 
     def _generar_txt_comandos(self):
         try:
             with open(COMANDOS_TXT_PATH, "w", encoding="utf-8") as f:
                 f.write(self.MENU_TEXTO)
         except Exception as ex:
-            logger.error("No se pudo crear lia_comandos.txt: %s", ex)
+            print(f"No se pudo crear lia_comandos.txt: {ex}")
 
     def abrir_comandos_txt(self):
         import subprocess, platform
@@ -277,380 +198,344 @@ class LiaAssistant:
             else:
                 subprocess.Popen(["xdg-open", COMANDOS_TXT_PATH])
             self.hablar("Aquí tienes todos mis comandos.")
-            sonido_confirmacion()
             self.registrar_actividad("Abrió Comandos.txt")
         except Exception as ex:
-            logger.error("Error al abrir comandos.txt: %s", ex)
-            sonido_error()
+            print(f"Error al abrir comandos: {ex}")
 
     def cerrar_comandos_txt(self):
         import subprocess, platform
         try:
             if platform.system() == "Windows":
-                subprocess.run(
-                    ["taskkill", "/f", "/im", "notepad.exe"],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                )
-        except Exception as ex:
-            logger.warning("No se pudo cerrar notepad: %s", ex)
+                subprocess.run(["taskkill", "/f", "/im", "notepad.exe"],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
 
     def _handle_clap_sequence(self, count: int):
-        logger.debug("Aplausos: %d", count)
+        import json
+        modos_path = os.path.join(_ROOT_DIR, "../lia_modos.json")
+        modos = []
+        try:
+            if os.path.exists(modos_path):
+                with open(modos_path, "r", encoding="utf-8") as f:
+                    modos = json.load(f).get("modos", [])
+        except Exception:
+            pass
+
         if not self.is_active and count >= 3:
             self.is_active = True
             self.detector.set_active(True)
-            sonido_confirmacion()
-            self.hablar("Sistemas reactivados.")
+            self.hablar(self.persona.reactivacion())
+            if self._gui_window:
+                self._gui_window.signal_status.emit("activa")
             return
+
         if not self.is_active:
             return
-        sonido_confirmacion()
-        if count == 1:
-            self.sistema.modo_estudio()
-        elif count == 2:
-            self.sistema.modo_programacion()
-        elif count >= 3:
-            self.sistema.modo_juego()
+
+        modo = next((m for m in modos if m.get("aplausos") == count), None)
+
+        if modo:
+            accion = modo.get("accion", "")
+            if accion == "modo_estudio":
+                self.sistema.modo_estudio()
+            elif accion == "modo_programacion":
+                self.sistema.modo_programacion()
+            elif accion == "modo_juego":
+                self.sistema.modo_juego()
+            else:
+                if count == 1:
+                    self.sistema.modo_estudio()
+                elif count == 2:
+                    self.sistema.modo_programacion()
+                elif count >= 3:
+                    self.sistema.modo_juego()
+        else:
+            if count == 1:
+                self.sistema.modo_estudio()
+            elif count == 2:
+                self.sistema.modo_programacion()
+            elif count >= 3:
+                self.sistema.modo_juego()
 
     def _parse_command(self, cmd: str):
         if not cmd.strip():
             return
 
-        logger.debug("Comando: '%s'", cmd)
+        cmd_l = cmd.lower()
 
-        cmd_fuzzy = _fuzzy_match_comando(cmd)
-        if cmd_fuzzy != cmd:
-            logger.debug("Fuzzy corregido: '%s' → '%s'", cmd, cmd_fuzzy)
-            cmd = cmd_fuzzy
-
-        if "gracias" in cmd:
+        if "gracias" in cmd_l:
             self.cerrar_comandos_txt()
-            sonido_confirmacion()
-            self.hablar(random.choice(_GRACIAS))
+            self.hablar(self.persona.gracias())
             return
 
-        if "comandos" in cmd:
+        if "comandos" in cmd_l:
             self.abrir_comandos_txt()
             return
 
-        if any(k in cmd for k in ("inicio", "rutina", "buenos días", "buen día")):
-            mostrar_dashboard(lia=self, auto_close_ms=20000)
+        if _coincide(cmd_l, _SINONIMOS_INICIO):
             self.internet.rutina_inicio()
             return
 
-        if "silencio" in cmd:
-            self.modo_silencioso = True
-            print("🔇 Modo silencioso activado.")
-            sonido_cancelar()
+        if _coincide(cmd_l, _SINONIMOS_SILENCIO_VOZ):
+            self.voz.set_silencioso(True)
+            print("Modo silencioso activado.")
             return
 
-        if "habla" in cmd or "activa voz" in cmd:
-            self.modo_silencioso = False
-            sonido_confirmacion()
-            self.hablar("Voz reactivada.")
+        if "habla" in cmd_l or "activa voz" in cmd_l or "voz normal" in cmd_l:
+            self.voz.set_silencioso(False)
+            self.hablar(self.persona.voz_reactivada())
             return
 
-        if "pausate" in cmd or cmd.strip() == "pausa":
+        if _coincide(cmd_l, _SINONIMOS_PAUSA):
             self.is_active = False
             self.detector.set_active(False)
-            sonido_cancelar()
-            self.hablar("Pausada. Da 3 aplausos para volver.")
+            self.hablar(self.persona.pausa())
+            if self._gui_window:
+                self._gui_window.signal_status.emit("pausada")
             return
 
-        if "apagate" in cmd or "apagar" in cmd:
-            sonido_apagado()
-            time.sleep(0.5)
-            self.hablar("Apagando. Hasta luego.")
+        if "apagate" in cmd_l or "apagar" in cmd_l or "ciérrate" in cmd_l:
+            self.hablar(self.persona.apagado())
             self._shutdown_flag.set()
+            if self._gui_window:
+                self._gui_window.signal_status.emit("apagada")
             return
 
-        if "apaga la pc" in cmd or "apaga el pc" in cmd:
-            self.sistema.apagar_pc(segundos=60)
+        if _coincide(cmd_l, _SINONIMOS_VSCODE) and "abre" not in cmd_l:
+            self.sistema.modo_programacion()
             return
 
-        if "cancela apagado" in cmd:
-            self.sistema.cancelar_apagado()
+        if _coincide(cmd_l, _SINONIMOS_ESTUDIO) and "abre" not in cmd_l:
+            self.sistema.modo_estudio()
             return
 
-        if "cierra todo" in cmd or "cerrar todo" in cmd:
-            self.sistema.cerrar_todo()
+        if _coincide(cmd_l, _SINONIMOS_JUEGO) and "abre" not in cmd_l:
+            self.sistema.modo_juego()
             return
 
-        if "abre " in cmd or "abrir " in cmd:
+        if "crea proyecto react" in cmd_l or "crear proyecto react" in cmd_l:
+            for kw in ("crea proyecto react en ", "crear proyecto react en ",
+                       "crea proyecto react ", "crear proyecto react "):
+                if kw in cmd_l:
+                    nombre = cmd_l.split(kw, 1)[-1].strip()
+                    self.dev.crear_proyecto_react(nombre)
+                    return
+            self.hablar("¿En qué carpeta quieres crear el proyecto React?")
+            return
+
+        if "abre " in cmd_l or "abrir " in cmd_l:
             for trigger in ("abre ", "abrir "):
-                if trigger in cmd:
-                    app = cmd.split(trigger, 1)[-1].strip()
+                if trigger in cmd_l:
+                    app = cmd_l.split(trigger, 1)[-1].strip()
                     if app:
-                        sonido_confirmacion()
                         self.sistema.open_application(app)
                     else:
-                        sonido_error()
                         self.hablar("¿Qué quieres que abra?")
                     return
 
-        if "pendientes" in cmd and not any(k in cmd for k in ("anota", "tarea")):
+        if "cierra todo" in cmd_l or "cerrar todo" in cmd_l:
+            self.sistema.cerrar_todo()
+            return
+
+        if _coincide(cmd_l, _SINONIMOS_PENDIENTES):
             self.memoria.decir_pendientes()
             return
 
         for verbo in ("anota", "apunta", "agrega pendiente", "agrega"):
-            if verbo in cmd:
-                texto = cmd.split(verbo, 1)[-1].strip().strip(",.-: ")
+            if verbo in cmd_l:
+                texto = cmd_l.split(verbo, 1)[-1].strip().strip(",.-: ")
                 if texto:
-                    sonido_confirmacion()
                     self.memoria.agregar_pendiente(texto)
                 else:
-                    sonido_error()
                     self.hablar("¿Qué quieres que anote?")
                 return
 
         for kw in ("lista", "completada", "hecha", "terminada", "completa"):
-            if kw in cmd and "tarea" in cmd:
-                tarea = cmd.replace("tarea", "").replace(kw, "").strip().strip(",.-: ")
+            if kw in cmd_l and "tarea" in cmd_l:
+                tarea = (cmd_l.replace("tarea", "").replace(kw, "")
+                              .strip().strip(",.-: "))
                 self.memoria.completar_tarea(tarea)
                 return
 
-        if cmd.startswith("nota "):
-            partes = cmd[5:].strip().split(" ", 1)
+        if cmd_l.startswith("nota "):
+            partes = cmd_l[5:].strip().split(" ", 1)
             if len(partes) == 2:
-                sonido_confirmacion()
                 self.memoria.guardar_nota(partes[0], partes[1])
             else:
-                sonido_error()
                 self.hablar("Di: nota [clave] [contenido].")
             return
 
-        if "recuerda nota " in cmd:
-            self.memoria.obtener_nota(cmd.split("recuerda nota ", 1)[-1].strip())
+        if "recuerda nota " in cmd_l:
+            clave = cmd_l.replace("recuerda nota", "").strip()
+            self.memoria.obtener_nota(clave)
             return
 
-        if "pomodoro" in cmd:
+        if "pomodoro" in cmd_l:
             minutos = 25
-            for p in cmd.split():
+            for p in cmd_l.split():
                 if p.isdigit():
                     minutos = int(p)
                     break
-            sonido_confirmacion()
             self.memoria.iniciar_pomodoro(minutos)
             return
 
-        if any(k in cmd for k in ("recordatorios", "mis recordatorios")):
-            self.recordatorios.listar()
-            return
-
-        if "completar recordatorio" in cmd or "recordatorio listo" in cmd:
-            texto = (cmd.replace("completar recordatorio", "")
-                       .replace("recordatorio listo", "")
-                       .strip())
-            self.recordatorios.completar(texto)
-            return
-
-        if "recuerda" in cmd or "recuérdame" in cmd:
-            cmd_limpio = cmd.replace("recuérdame", "recuerda")
-
-            if " en " in cmd_limpio and "nota" not in cmd_limpio:
-                partes  = cmd_limpio.split(" en ", 1)
+        if "recuerda" in cmd_l and " en " in cmd_l:
+            try:
+                partes  = cmd_l.split(" en ", 1)
                 mensaje = partes[0].replace("recuerda", "").strip()
                 resto   = partes[1]
-                nums    = "".join(c for c in resto if c.isdigit() or c == ".")
-                if nums and any(k in resto for k in ("minuto", "hora", "segundo")):
-                    try:
-                        if "hora" in resto:
-                            mins = float(nums) * 60
-                        elif "segundo" in resto:
-                            mins = float(nums) / 60
-                        else:
-                            mins = float(nums)
-                        sonido_confirmacion()
-                        self.memoria.recordar_en(mensaje, mins)
-                    except Exception as ex:
-                        logger.warning("Error en recordatorio por minutos: %s", ex)
-                        sonido_error()
-                        self.hablar("No entendí el tiempo.")
-                    return
-
-            patrones_fecha = [
-                r"\bel\b", r"\bdia\b", r"\bdía\b", r"\bmañana\b",
-                r"\bmanana\b", r"\blunes\b", r"\bmartes\b", r"\bmiercoles\b",
-                r"\bjueves\b", r"\bviernes\b", r"\bsabado\b", r"\bdomingo\b",
-                r"\benero\b", r"\bfebrero\b", r"\bmarzo\b", r"\babril\b",
-                r"\bmayo\b", r"\bjunio\b", r"\bjulio\b", r"\bagosto\b",
-                r"\bseptiembre\b", r"\boctubre\b", r"\bnoviembre\b", r"\bdiciembre\b",
-            ]
-            if any(re.search(p, cmd_limpio) for p in patrones_fecha):
-                cmd_trabajo = cmd_limpio.replace("recuerda", "").replace("recuérdame", "").strip()
-                for kw in ("el día", "el", "para el", "para"):
-                    if kw in cmd_trabajo:
-                        partes = cmd_trabajo.split(kw, 1)
-                        mensaje    = partes[0].strip().strip(",.-: ")
-                        texto_fecha = kw + " " + partes[1].strip()
-                        if mensaje:
-                            sonido_confirmacion()
-                            self.recordatorios.agregar(mensaje, texto_fecha)
-                        else:
-                            self.hablar("¿Qué quieres que te recuerde?")
-                        return
-
-                sonido_error()
-                self.hablar("Di por ejemplo: recuerda pagar la renta el 30 de abril.")
-                return
-
-            sonido_error()
-            self.hablar("No entendí el recordatorio. Puedes decir: recuérdame X el 30 de abril, o recuérdame X en 30 minutos.")
+                mins    = float("".join(c for c in resto if c.isdigit() or c == ".") or "5")
+                self.memoria.recordar_en(mensaje, mins)
+            except Exception:
+                self.hablar("No entendí el recordatorio.")
             return
 
-        if "clima" in cmd or "tiempo" in cmd:
+        if _coincide(cmd_l, _SINONIMOS_CLIMA):
             self.internet.decir_clima()
             return
 
-        for trigger in ("busca ", "buscar "):
-            if trigger in cmd:
-                q = cmd.split(trigger, 1)[-1].strip()
-                if q:
-                    self.internet.buscar_google(q)
-                else:
-                    sonido_error()
-                    self.hablar("¿Qué quieres buscar?")
-                return
-
-        if "youtube " in cmd:
-            q = cmd.split("youtube ", 1)[-1].strip()
-            if q:
-                self.internet.buscar_youtube(q)
-            else:
-                sonido_error()
-                self.hablar("¿Qué quieres buscar en YouTube?")
+        if "busca " in cmd_l or "buscar " in cmd_l:
+            consulta = cmd_l.replace("busca", "").replace("buscar", "").strip()
+            if consulta:
+                self.internet.buscar_google(consulta)
             return
 
-        if "recalibra" in cmd or "calibra" in cmd:
+        if "youtube " in cmd_l:
+            consulta = cmd_l.split("youtube ", 1)[-1].strip()
+            if consulta:
+                self.internet.buscar_youtube(consulta)
+            return
+
+        if "recalibra" in cmd_l or "calibra" in cmd_l:
             self.detector.calibrar()
             return
 
-        if any(k in cmd for k in ("sistema", "cpu", "ram")):
+        if _coincide(cmd_l, _SINONIMOS_SISTEMA):
             self.sistema.obtener_info_sistema()
             return
 
-        if "disco" in cmd:
+        if "disco" in cmd_l:
             self.sistema.obtener_uso_disco()
             return
 
-        if "bloquea" in cmd or "bloquear" in cmd:
+        if "bloquea" in cmd_l or "bloquear" in cmd_l:
             self.sistema.bloquear_pc()
             return
 
-        if "git status" in cmd or "estado del repo" in cmd:
+        if "apaga la pc" in cmd_l or "apaga el pc" in cmd_l:
+            self.sistema.apagar_pc(segundos=60)
+            return
+
+        if "cancela apagado" in cmd_l:
+            self.sistema.cancelar_apagado()
+            return
+
+        if "git status" in cmd_l or "estado del repo" in cmd_l:
             self.dev.estado_git()
             return
 
-        if "git push" in cmd:
+        if "git push" in cmd_l:
             self.dev.hacer_push()
             return
 
-        if "git pull" in cmd:
+        if "git pull" in cmd_l:
             self.dev.hacer_pull()
             return
 
-        if "ramas" in cmd:
+        if "ramas" in cmd_l:
             self.dev.listar_ramas()
             return
 
-        if any(k in cmd for k in ("ayuda", "menú", "menu")):
-            self.mostrar_menu()
-            self.hablar("Te mostré el menú en pantalla.")
+        if "ayuda" in cmd_l or "menú" in cmd_l or "menu" in cmd_l:
+            self.abrir_comandos_txt()
             return
 
-        logger.debug("Comando no reconocido: '%s'", cmd)
+        # ── Resumen del día (mod_resumen) ──────────────────────────
+        if "resumen" in cmd_l or "qué hice hoy" in cmd_l or "que hice hoy" in cmd_l:
+            self.resumen.resumen_del_dia()
+            return
+
+        # ── Hora y fecha (mod_productividad) ───────────────────────
+        if "qué hora" in cmd_l or "que hora" in cmd_l or "la hora" in cmd_l:
+            self.productividad.decir_hora()
+            return
+
+        if "qué fecha" in cmd_l or "que fecha" in cmd_l or "qué día es" in cmd_l or "que dia es" in cmd_l:
+            self.productividad.decir_fecha()
+            return
+
+        # ── Calculadora por voz (mod_productividad) ────────────────
+        if any(kw in cmd_l for kw in ("cuánto es", "cuanto es", "calcula", "resultado de")):
+            if self.productividad.calcular(cmd_l):
+                return
+
+        # ── Conversiones (mod_productividad) ───────────────────────
+        if "convierte " in cmd_l:
+            self.productividad.convertir(cmd_l)
+            return
+
+        # ── Modo Enfoque (mod_focus) ────────────────────────────────
+        if "modo enfoque" in cmd_l or "modo focus" in cmd_l:
+            minutos = 25
+            for p in cmd_l.split():
+                if p.isdigit():
+                    minutos = int(p)
+                    break
+            self.focus.activar(minutos)
+            return
+
+        if "termina enfoque" in cmd_l or "fin enfoque" in cmd_l or "desbloquea sitios" in cmd_l:
+            self.focus.desactivar()
+            return
 
     def _listen_loop(self):
         with self.microphone as src:
             self.recognizer.adjust_for_ambient_noise(src, duration=1.0)
-            logger.info("Reconocimiento de voz listo.")
-            print("✅ Listo para comandos de voz. Di 'Lia, ...' para activarme.\n")
 
             while not self._shutdown_flag.is_set():
-                if self.lia_hablando:
-                    time.sleep(0.1)
-                    continue
-
                 if not self.is_active:
                     time.sleep(0.4)
                     continue
-
                 try:
-                    audio = self.recognizer.listen(
-                        src, timeout=None, phrase_time_limit=8
-                    )
-                    if self.lia_hablando:
-                        continue
+                    audio = self.recognizer.listen(src, timeout=None, phrase_time_limit=8)
+                    cmd = self.recognizer.recognize_google(audio, language="es-MX").lower()
 
-                    try:
-                        texto = self.recognizer.recognize_google(
-                            audio, language="es-MX"
-                        ).lower()
-                    except sr.UnknownValueError:
-                        continue
-                    except sr.RequestError as ex:
-                        logger.error("❌ Error de reconocimiento (API): %s", ex)
-                        print(f"❌ Error reconocimiento de voz: {ex}")
-                        continue
-
-                    print(f"🎤 Escuché: '{texto}'")
-                    logger.debug("Reconocido: '%s'", texto)
-
-                    if "gracias" in texto and "lia" not in texto:
+                    if "gracias" in cmd:
                         self.cerrar_comandos_txt()
-                        sonido_confirmacion()
-                        self.hablar(random.choice(_GRACIAS))
+                        self.hablar(self.persona.gracias())
                         continue
 
-                    if _contiene_wake_word(texto):
-                        sonido_escuchando()
-                        limpio = _limpiar_wake_word(texto)
+                    print(f"Escuché: '{cmd}'")
 
-                        if not limpio:
-                            audio2 = self.recognizer.listen(
-                                src, timeout=4, phrase_time_limit=8
-                            )
-                            try:
-                                limpio = self.recognizer.recognize_google(
-                                    audio2, language="es-MX"
-                                ).lower()
-                                print(f"🎤 Comando (2da etapa): '{limpio}'")
-                            except sr.UnknownValueError:
-                                continue
-                            except sr.RequestError as ex:
-                                logger.error("❌ Error reconocimiento 2da etapa: %s", ex)
-                                print(f"❌ Error en segunda escucha: {ex}")
-                                continue
+                    if cmd.strip() in ("lia", "lía"):
+                        continue
 
+                    if "lia" in cmd or "lía" in cmd:
+                        limpio = (cmd
+                                  .replace("lía,", "").replace("lia,", "")
+                                  .replace("lía", "").replace("lia", "")
+                                  .strip().strip(",. "))
                         if limpio:
                             self._parse_command(limpio)
 
-                except sr.WaitTimeoutError:
+                except sr.UnknownValueError:
                     pass
-                except Exception as ex:
-                    logger.exception("❌ Error inesperado en _listen_loop: %s", ex)
-                    print(f"❌ Error en escucha: {ex}")
+                except sr.RequestError as ex:
+                    print(f"Error reconocimiento: {ex}")
+                except Exception:
                     time.sleep(0.5)
 
     def run(self):
-        voz = threading.Thread(target=self._listen_loop,
-                               daemon=True, name="LiaVoz")
+        voz = threading.Thread(target=self._listen_loop, daemon=True)
         voz.start()
         try:
             self.detector.start_loop(shutdown_flag=self._shutdown_flag)
         except KeyboardInterrupt:
-            print("\n👋 Lia detenida.")
+            print("\nLia detenida.")
         finally:
             self._shutdown_flag.set()
-            self._tts_queue.put(_SENTINEL)
-            self._tts_thread.join(timeout=3)
-            logger.info("Lia apagada.")
 
 
 if __name__ == "__main__":
-    print("""
-+=======================================+
-|       ASISTENTE  LIA  v7.0            |
-+=======================================+
-""")
     LiaAssistant().run()
