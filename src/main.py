@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """
-main.py — Punto de entrada de Lia v10.
-Lanza la GUI y arranca el asistente en un hilo de fondo.
+main.py — Punto de entrada de Lia v4.4.1
+Arranca Lia en segundo plano. La GUI NO se abre al iniciar;
+solo aparece el icono en el System Tray.
+    - Doble clic en el icono  → abre la GUI
+    - Clic derecho            → menú contextual
+    - python main.py --show   → abre la GUI directamente al iniciar
 """
 
 import sys
 import os
 import threading
 
-# Asegura que el directorio del script esté en el path
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
@@ -20,24 +23,28 @@ from mod_gui import LiaMainWindow, LiaWorker, STYLE_GLOBAL
 
 
 def main():
+    # --show abre la GUI inmediatamente (util para debug manual)
+    abrir_gui = "--show" in sys.argv
+
     app = QApplication(sys.argv)
     app.setApplicationName("Lia")
     app.setApplicationDisplayName("Lia Asistente Personal")
-    app.setQuitOnLastWindowClosed(False)
+    app.setQuitOnLastWindowClosed(False)  # no cerrar aunque se cierre la ventana
     app.setStyleSheet(STYLE_GLOBAL)
 
-    # Escalar a DPI en Windows
     try:
         app.setAttribute(Qt.AA_UseHighDpiPixmaps)
     except Exception:
         pass
 
-    # Ventana GUI primero (sin lia todavía)
+    # Crear la ventana PERO no mostrarla todavia
     window = LiaMainWindow(lia_instance=None)
     window.signal_status.emit("iniciando")
-    window.show()
 
-    # Inicializar Lia en hilo separado para no bloquear la GUI
+    if abrir_gui:
+        window.show()
+
+    # Inicializar Lia en hilo separado para no bloquear el tray
     def _init_lia():
         try:
             from Lia import LiaAssistant
@@ -45,7 +52,7 @@ def main():
             lia._gui_window = window
             window.lia = lia
             window.signal_status.emit("activa")
-            window.signal_log.emit("Lia v10 en linea. A su servicio, Leonardo.")
+            window.signal_log.emit("Lia v4.4.1 en linea. A su servicio, Leonardo.")
 
             worker = LiaWorker(lia)
             window.worker = worker

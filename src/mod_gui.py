@@ -1175,7 +1175,8 @@ class LiaMainWindow(QMainWindow):
         self.tray.show()
 
     def _on_tray_activated(self, reason):
-        if reason == QSystemTrayIcon.DoubleClick:
+        # Clic simple o doble clic → abrir GUI
+        if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick):
             self._mostrar_ventana()
 
     def _mostrar_ventana(self):
