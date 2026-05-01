@@ -76,7 +76,7 @@ class LiaAssistant:
 
     MENU_TEXTO = """
 +==============================================================+
-|                   ASISTENTE LIA  v9.0                        |
+|                   ASISTENTE LIA  v4.5.0                        |
 +==============================================================+
 |  APLAUSOS                                                    |
 |    1 aplauso   ->  Modo Estudio  (ChatGPT + WhatsApp)        |
