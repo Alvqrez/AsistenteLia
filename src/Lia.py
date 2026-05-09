@@ -536,6 +536,38 @@ class LiaAssistant:
                         if app.endswith(sufijo):
                             app = app[: -len(sufijo)].strip()
                             break
+                    # ── FIX: si la "app" es un sitio web conocido, abrirlo en navegador ──
+                    # Esto soluciona "abre youtube en google/internet" que antes llamaba
+                    # open_application("youtube") y fallaba porque YouTube no está instalado
+                    # como ejecutable local.
+                    _sitios_web = {
+                        "youtube": "https://www.youtube.com",
+                        "google": "https://www.google.com",
+                        "gmail": "https://mail.google.com",
+                        "drive": "https://drive.google.com",
+                        "calendar": "https://calendar.google.com",
+                        "whatsapp": "https://web.whatsapp.com",
+                        "chatgpt": "https://chat.openai.com",
+                        "claude": "https://claude.ai",
+                        "github": "https://github.com",
+                        "notion": "https://www.notion.so",
+                        "figma": "https://www.figma.com",
+                        "netflix": "https://www.netflix.com",
+                        "spotify web": "https://open.spotify.com",
+                        "twitter": "https://twitter.com",
+                        "instagram": "https://www.instagram.com",
+                        "facebook": "https://www.facebook.com",
+                        "linkedin": "https://www.linkedin.com",
+                        "reddit": "https://www.reddit.com",
+                        "stackoverflow": "https://stackoverflow.com",
+                        "canva": "https://www.canva.com",
+                    }
+                    if app in _sitios_web:
+                        import webbrowser as _wb
+                        _wb.open(_sitios_web[app])
+                        self.hablar(f"Abriendo {app}.")
+                        self.registrar_actividad(f"Abrió web {app}")
+                        return
                     if app:
                         self.sistema.open_application(app)
                     else:

@@ -4,7 +4,7 @@ __pycache__/
 *.pyc
 *.pyo
 *.spec
-lia_historial.json
+data/lia_historial.json
 .venv
 .venv/
 .idea/
