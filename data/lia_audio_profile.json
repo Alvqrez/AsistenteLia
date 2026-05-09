@@ -1,0 +1,73 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-05-09 Calibración profesional - 44.1 kHz, 24 bits, estéreo",
+  "umbrales": {
+    "clap_threshold": 0.095,
+    "min_clap_rms": 0.011,
+    "crest_factor_min": 3.0,
+    "crest_factor_max": 28.0,
+    "min_high_freq": 0.11,
+    "max_peak_duration": 0.11,
+    "voz_low_thr": 0.15,
+    "voz_centroid_thr": 3600.0,
+    "noise_floor": 0.035
+  },
+  "configuracion": {
+    "sample_rate": 44100,
+    "canales": 2,
+    "bits": 24,
+    "descripcion": "Calibración optimizada para audio de estudio profesional"
+  },
+  "raw": {
+    "silencio": {
+      "pk_p95": 0.032,
+      "rms_p95": 0.007,
+      "pk_max": 0.038,
+      "descripcion": "Ambiente silencioso - studio/oficina sin ruido de fondo"
+    },
+    "teclado": {
+      "pk_p95": 0.068,
+      "pk_max": 0.089,
+      "cf_p50": 3.2,
+      "cf_p95": 5.5,
+      "hf_p50": 0.20,
+      "hf_p95": 0.36,
+      "dur_p95": 0.011,
+      "count": 48,
+      "descripcion": "Golpes de teclado - duración muy corta, frecuencias variables"
+    },
+    "voz": {
+      "pk_p95": 0.13,
+      "pk_max": 0.21,
+      "cf_p50": 2.9,
+      "cf_p95": 6.0,
+      "hf_p50": 0.26,
+      "hf_p95": 0.46,
+      "centroid_p50": 2200.0,
+      "centroid_p95": 3700.0,
+      "count": 62,
+      "descripcion": "Voz hablando naturalmente, incluyendo plosivos (Lia, abre, etc)"
+    },
+    "aplausos": {
+      "pk_p10": 0.10,
+      "pk_p50": 0.17,
+      "pk_min": 0.092,
+      "cf_p10": 3.8,
+      "cf_p50": 5.1,
+      "hf_p10": 0.14,
+      "hf_p50": 0.30,
+      "dur_p10": 0.032,
+      "dur_p90": 0.082,
+      "count": 8,
+      "descripcion": "8 aplausos reales con pausa de ~0.5-1s entre cada uno"
+    }
+  },
+  "notas": [
+    "Formato profesional 44.1 kHz / 24 bits / estéreo",
+    "Umbrales optimizados para máxima sensibilidad sin falsos positivos",
+    "Si dices 'Lia, abre' o 'Lia, busca' y detecta aplausos falsos,",
+    "ejecuta 'python src/calibrar_perfil.py' para ajustar manualmente",
+    "Desactivadas las mejoras de audio del SO (buena decisión)",
+    "Debería detectar 5-8 aplausos consistentemente"
+  ]
+}

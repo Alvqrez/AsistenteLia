@@ -12,7 +12,9 @@ logger = logging.getLogger("lia.resumen")
 
 _SRC_DIR       = os.path.dirname(os.path.abspath(__file__))
 _ROOT_DIR      = os.path.dirname(_SRC_DIR)
-HISTORIAL_PATH = os.path.join(_ROOT_DIR, "lia_historial.json")
+_DATA_DIR      = os.path.join(_ROOT_DIR, "data")
+os.makedirs(_DATA_DIR, exist_ok=True)
+HISTORIAL_PATH = os.path.join(_DATA_DIR, "lia_historial.json")
 
 
 class ResumenTools:

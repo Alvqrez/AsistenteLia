@@ -115,21 +115,48 @@ class SystemTools:
     }
 
     CARPETAS_MAP: dict = {
-        "documentos":   os.path.expanduser("~/Documents"),
-        "documents":    os.path.expanduser("~/Documents"),
-        "descargas":    os.path.expanduser("~/Downloads"),
-        "downloads":    os.path.expanduser("~/Downloads"),
-        "escritorio":   os.path.expanduser("~/Desktop"),
-        "desktop":      os.path.expanduser("~/Desktop"),
-        "imágenes":     os.path.expanduser("~/Pictures"),
-        "imagenes":     os.path.expanduser("~/Pictures"),
-        "pictures":     os.path.expanduser("~/Pictures"),
-        "videos":       os.path.expanduser("~/Videos"),
-        "música":       os.path.expanduser("~/Music"),
-        "musica":       os.path.expanduser("~/Music"),
-        "onedrive":     os.path.expandvars("%OneDrive%"),
-        "notas":        os.path.join(os.path.expanduser("~"), "Documents", "Notas"),
+        # Documentos
+        "documentos":       os.path.expanduser("~/Documents"),
+        "mis documentos":   os.path.expanduser("~/Documents"),
+        "documents":        os.path.expanduser("~/Documents"),
+        # Descargas
+        "descargas":        os.path.expanduser("~/Downloads"),
+        "mis descargas":    os.path.expanduser("~/Downloads"),
+        "downloads":        os.path.expanduser("~/Downloads"),
+        # Escritorio
+        "escritorio":       os.path.expanduser("~/Desktop"),
+        "el escritorio":    os.path.expanduser("~/Desktop"),
+        "desktop":          os.path.expanduser("~/Desktop"),
+        # Imágenes
+        "imágenes":         os.path.expanduser("~/Pictures"),
+        "imagenes":         os.path.expanduser("~/Pictures"),
+        "mis imágenes":     os.path.expanduser("~/Pictures"),
+        "mis imagenes":     os.path.expanduser("~/Pictures"),
+        "pictures":         os.path.expanduser("~/Pictures"),
+        "fotos":            os.path.expanduser("~/Pictures"),
+        # Videos
+        "videos":           os.path.expanduser("~/Videos"),
+        "mis videos":       os.path.expanduser("~/Videos"),
+        # Música
+        "música":           os.path.expanduser("~/Music"),
+        "musica":           os.path.expanduser("~/Music"),
+        "mi música":        os.path.expanduser("~/Music"),
+        # OneDrive / Notas
+        "onedrive":         os.path.expandvars("%OneDrive%"),
+        "notas":            os.path.join(os.path.expanduser("~"), "Documents", "Notas"),
+        # Raíz de usuario
+        "usuario":          os.path.expanduser("~"),
+        "mi pc":            os.path.expanduser("~"),
+        "home":             os.path.expanduser("~"),
     }
+
+    # Lugares donde buscar carpetas personalizadas que el usuario nombre
+    _CARPETAS_RAIZ_BUSQUEDA = [
+        os.path.expanduser("~/Documents"),
+        os.path.expanduser("~/Desktop"),
+        os.path.expanduser("~/Downloads"),
+        os.path.expanduser("~"),
+    ]
 
     def __init__(self, parent_lia):
         self.lia     = parent_lia
@@ -287,13 +314,27 @@ class SystemTools:
             self.lia.hablar("Error al abrir carpeta.")
 
     def buscar_en_carpeta(self, termino: str, nombre_carpeta: str):
-        ruta_base = self.CARPETAS_MAP.get(nombre_carpeta.lower().strip())
+        """
+        Busca archivos/carpetas que contengan `termino` dentro de `nombre_carpeta`.
+        Si la carpeta no está en CARPETAS_MAP, intenta encontrarla en los lugares
+        comunes del sistema (Documentos, Escritorio, Descargas, ~).
+        """
+        clave = nombre_carpeta.lower().strip()
+        ruta_base = self.CARPETAS_MAP.get(clave)
+
+        # Si no está en el mapa, buscar la carpeta por nombre en ubicaciones comunes
         if not ruta_base or not os.path.exists(ruta_base):
-            self.lia.hablar(f"No conozco la carpeta '{nombre_carpeta}'.")
+            ruta_base = self._buscar_carpeta_por_nombre(nombre_carpeta)
+
+        if not ruta_base:
+            self.lia.hablar(
+                f"No encontré ninguna carpeta llamada '{nombre_carpeta}'. "
+                f"Prueba diciendo: busca {termino} en documentos, descargas o escritorio."
+            )
             return
 
         termino_lower = termino.lower()
-        encontrados = []
+        encontrados   = []
 
         for root, dirs, files in os.walk(ruta_base):
             dirs[:] = [d for d in dirs if not d.startswith(".")]
@@ -303,7 +344,7 @@ class SystemTools:
             for carpeta in dirs:
                 if termino_lower in carpeta.lower():
                     encontrados.append(os.path.join(root, carpeta))
-            if len(encontrados) >= 5:
+            if len(encontrados) >= 8:
                 break
 
         if not encontrados:
@@ -312,7 +353,7 @@ class SystemTools:
 
         if len(encontrados) == 1:
             ruta = encontrados[0]
-            self.lia.hablar(f"Encontré: {os.path.basename(ruta)}. ¿Lo abro?")
+            self.lia.hablar(f"Encontré: {os.path.basename(ruta)}. Abriendo.")
             if hasattr(self.lia, "contexto"):
                 self.lia.contexto.registrar_apertura_archivo(ruta)
             try:
@@ -324,9 +365,28 @@ class SystemTools:
             for r in encontrados[:3]:
                 self.lia.hablar(os.path.basename(r))
                 time.sleep(0.2)
+            if len(encontrados) > 3:
+                self.lia.hablar(f"Y {len(encontrados) - 3} más.")
             if hasattr(self.lia, "contexto"):
                 self.lia.contexto.registrar_apertura_archivo(encontrados[0])
         self.lia.registrar_actividad(f"Buscó '{termino}' en {nombre_carpeta}")
+
+    def _buscar_carpeta_por_nombre(self, nombre: str) -> str | None:
+        """
+        Busca una carpeta por nombre en las ubicaciones comunes del usuario.
+        Devuelve la ruta si la encuentra, None si no.
+        """
+        nombre_lower = nombre.lower().strip()
+        for raiz in self._CARPETAS_RAIZ_BUSQUEDA:
+            if not os.path.exists(raiz):
+                continue
+            try:
+                for entry in os.scandir(raiz):
+                    if entry.is_dir() and entry.name.lower() == nombre_lower:
+                        return entry.path
+            except PermissionError:
+                continue
+        return None
 
     def modo_estudio(self):
         if hasattr(self.lia, "contexto"):

@@ -26,8 +26,10 @@ from PySide6.QtWidgets import (
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
 _SRC_DIR    = os.path.dirname(os.path.abspath(__file__))
-_ROOT_DIR = _sys._MEIPASS if getattr(_sys, "frozen", False) else os.path.dirname(_SRC_DIR)
-_MODOS_PATH = os.path.join(_ROOT_DIR, "lia_modos.json")
+_ROOT_DIR   = _sys._MEIPASS if getattr(_sys, "frozen", False) else os.path.dirname(_SRC_DIR)
+_DATA_DIR   = os.path.join(_ROOT_DIR, "data")
+os.makedirs(_DATA_DIR, exist_ok=True)
+_MODOS_PATH = os.path.join(_DATA_DIR, "lia_modos.json")
 
 # ─── Palette ──────────────────────────────────────────────────────────────────
 _BG_VOID    = "#050810"

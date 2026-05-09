@@ -48,7 +48,7 @@ def main():
             from Lia import LiaAssistant
             lia = LiaAssistant()
             lia._gui_window = window
-            window.lia = lia
+            window.lia = liaW
             window.signal_status.emit("activa")
             window.signal_log.emit("Lia v4.6.0 en linea. A su servicio, Leonardo.")
 

@@ -11,12 +11,14 @@ logger = logging.getLogger("lia.vida")
 
 _SRC_DIR   = os.path.dirname(os.path.abspath(__file__))
 _ROOT_DIR  = os.path.dirname(_SRC_DIR)
+_DATA_DIR  = os.path.join(_ROOT_DIR, "data")
+os.makedirs(_DATA_DIR, exist_ok=True)
 NOTAS_DIR  = os.path.join(os.path.expanduser("~"), "Documents", "Notas")
 
 METAS_PATH      = os.path.join(NOTAS_DIR, "Metas.md")
 HABITOS_PATH    = os.path.join(NOTAS_DIR, "Habitos.md")
 PROYECTOS_PATH  = os.path.join(NOTAS_DIR, "Proyectos.md")
-VIDA_JSON_PATH  = os.path.join(_ROOT_DIR, "lia_vida.json")
+VIDA_JSON_PATH  = os.path.join(_DATA_DIR, "lia_vida.json")
 
 
 class VidaTools:

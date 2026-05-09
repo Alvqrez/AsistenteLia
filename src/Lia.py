@@ -4,6 +4,8 @@ import os
 import sys as _sys
 import threading
 import time
+import webbrowser
+import urllib.parse
 
 import speech_recognition as sr
 
@@ -20,8 +22,10 @@ from mod_focus         import FocusTools
 from mod_resumen       import ResumenTools
 
 _SRC_DIR          = os.path.dirname(os.path.abspath(__file__))
-_ROOT_DIR = _sys._MEIPASS if getattr(_sys, "frozen", False) else os.path.dirname(_SRC_DIR)
-COMANDOS_TXT_PATH = os.path.join(_ROOT_DIR, "lia_comandos.txt")
+_ROOT_DIR         = _sys._MEIPASS if getattr(_sys, "frozen", False) else os.path.dirname(_SRC_DIR)
+_DATA_DIR         = os.path.join(_ROOT_DIR, "data")
+os.makedirs(_DATA_DIR, exist_ok=True)   # garantiza que data/ existe siempre
+COMANDOS_TXT_PATH = os.path.join(_DATA_DIR, "lia_comandos.txt")
 
 # ── Sinónimos ──────────────────────────────────────────────────────────────────
 _SINONIMOS_VSCODE = {
@@ -204,12 +208,23 @@ class LiaAssistant:
 
         self.recognizer = sr.Recognizer()
         self.microphone = sr.Microphone()
-        # Umbral de energía más alto para no reaccionar a teclas o ruido leve
-        self.recognizer.energy_threshold          = 400
-        self.recognizer.dynamic_energy_threshold  = True
-        self.recognizer.dynamic_energy_adjustment_damping = 0.15
-        self.recognizer.pause_threshold           = 1.1
-        self.recognizer.non_speaking_duration     = 0.6
+
+        # ── Sensibilidad del reconocimiento de voz ────────────────────────────
+        # energy_threshold: energía mínima para considerar que hay voz.
+        #   400 era demasiado bajo → captaba ruido ambiental y conversaciones de fondo.
+        #   3500 requiere hablar con intención clara, ignora TV/música de fondo suave.
+        self.recognizer.energy_threshold = 3500
+
+        # dynamic_energy_threshold = False: deshabilita el ajuste automático.
+        #   Con True + damping 0.15 el umbral bajaba agresivamente en silencio
+        #   (daba 85% de peso a la energía actual), volviendo a Lia hiper-sensible.
+        self.recognizer.dynamic_energy_threshold = False
+
+        # pause_threshold: segundos de silencio para dar por terminada una frase.
+        self.recognizer.pause_threshold = 1.2
+
+        # non_speaking_duration: silencio mínimo antes/después de la frase.
+        self.recognizer.non_speaking_duration = 0.7
 
         self.sistema       = ExtendedSystemTools(self)
         self.memoria       = MemoryTools(self)
@@ -223,7 +238,6 @@ class LiaAssistant:
 
         self.detector = ClapDetector(on_sequence=self._handle_clap_sequence)
 
-        self.detector.calibrar()
         self._generar_txt_comandos()
         self.hablar(self.persona.saludo_inicio())
 
@@ -284,7 +298,7 @@ class LiaAssistant:
     def _handle_clap_sequence(self, count: int):
         import json
         # CORRECCIÓN: ruta era "../lia_modos.json" — incorrecto si se renombró la carpeta
-        modos_path = os.path.join(_ROOT_DIR, "lia_modos.json")
+        modos_path = os.path.join(_DATA_DIR, "lia_modos.json")
         modos = []
         try:
             if os.path.exists(modos_path):
@@ -497,10 +511,12 @@ class LiaAssistant:
             self._cmd_abrir_carpeta(cmd_l)
             return
 
-        # ── Buscar en carpeta ─────────────────────────────────────────────────
-        # "busca proyecto en documentos" / "encuentra factura en descargas"
-        if ("busca " in cmd_l or "encuentra " in cmd_l or "buscar " in cmd_l) and " en " in cmd_l:
-            self._cmd_buscar_carpeta(cmd_l)
+        # ── Buscar: internet o carpeta ────────────────────────────────────────
+        # Verbos de búsqueda: "busca", "buscar", "encuentra", "buscar información"
+        _verbos_buscar = ("busca ", "buscar ", "encuentra ", "buscar información ",
+                          "busca información ")
+        if any(v in cmd_l for v in _verbos_buscar):
+            self._cmd_buscar(cmd_l)
             return
 
         # ── Proyecto React ────────────────────────────────────────────────────
@@ -520,59 +536,104 @@ class LiaAssistant:
             self._pedir("proyecto_react", {}, "¿Cómo se va a llamar el proyecto React?")
             return
 
-        # ── Abrir aplicación ──────────────────────────────────────────────────
+        # ── Abrir aplicación o sitio web ──────────────────────────────────────
         if "abre " in cmd_l or "abrir " in cmd_l:
             for trigger in ("abre ", "abrir "):
                 if trigger in cmd_l:
                     app = cmd_l.split(trigger, 1)[-1].strip()
-                    # Eliminar sufijos de navegador/contexto que no forman parte del nombre
-                    # Ej: "youtube en google", "youtube en internet", "youtube en chrome"
+
+                    # Detectar sufijo "en internet/google/navegador/chrome…"
+                    # Si existe, el usuario quiere explícitamente abrir en el navegador
                     _sufijos_navegador = (
                         " en google", " en internet", " en el navegador",
                         " en chrome", " en firefox", " en edge", " en opera",
-                        " en el explorador", " en brave",
+                        " en el explorador", " en brave", " en el browser",
                     )
+                    abrir_en_web = False
                     for sufijo in _sufijos_navegador:
                         if app.endswith(sufijo):
                             app = app[: -len(sufijo)].strip()
+                            abrir_en_web = True
                             break
-                    # ── FIX: si la "app" es un sitio web conocido, abrirlo en navegador ──
-                    # Esto soluciona "abre youtube en google/internet" que antes llamaba
-                    # open_application("youtube") y fallaba porque YouTube no está instalado
-                    # como ejecutable local.
+
+                    # Mapa de sitios conocidos (nombre hablado → URL exacta)
                     _sitios_web = {
-                        "youtube": "https://www.youtube.com",
-                        "google": "https://www.google.com",
-                        "gmail": "https://mail.google.com",
-                        "drive": "https://drive.google.com",
-                        "calendar": "https://calendar.google.com",
-                        "whatsapp": "https://web.whatsapp.com",
-                        "chatgpt": "https://chat.openai.com",
-                        "claude": "https://claude.ai",
-                        "github": "https://github.com",
-                        "notion": "https://www.notion.so",
-                        "figma": "https://www.figma.com",
-                        "netflix": "https://www.netflix.com",
-                        "spotify web": "https://open.spotify.com",
-                        "twitter": "https://twitter.com",
-                        "instagram": "https://www.instagram.com",
-                        "facebook": "https://www.facebook.com",
-                        "linkedin": "https://www.linkedin.com",
-                        "reddit": "https://www.reddit.com",
+                        "youtube":       "https://www.youtube.com",
+                        "google":        "https://www.google.com",
+                        "gmail":         "https://mail.google.com",
+                        "drive":         "https://drive.google.com",
+                        "google drive":  "https://drive.google.com",
+                        "calendar":      "https://calendar.google.com",
+                        "google calendar": "https://calendar.google.com",
+                        "whatsapp":      "https://web.whatsapp.com",
+                        "chatgpt":       "https://chat.openai.com",
+                        "claude":        "https://claude.ai",
+                        "github":        "https://github.com",
+                        "notion":        "https://www.notion.so",
+                        "figma":         "https://www.figma.com",
+                        "netflix":       "https://www.netflix.com",
+                        "spotify":       "https://open.spotify.com",
+                        "twitter":       "https://twitter.com",
+                        "instagram":     "https://www.instagram.com",
+                        "facebook":      "https://www.facebook.com",
+                        "linkedin":      "https://www.linkedin.com",
+                        "reddit":        "https://www.reddit.com",
                         "stackoverflow": "https://stackoverflow.com",
-                        "canva": "https://www.canva.com",
+                        "canva":         "https://www.canva.com",
+                        "amazon":        "https://www.amazon.com",
+                        "mercado libre": "https://www.mercadolibre.com.mx",
+                        "mercadolibre":  "https://www.mercadolibre.com.mx",
+                        "tiktok":        "https://www.tiktok.com",
+                        "twitch":        "https://www.twitch.tv",
+                        "pinterest":     "https://www.pinterest.com",
+                        "wikipedia":     "https://es.wikipedia.org",
+                        "maps":          "https://maps.google.com",
+                        "google maps":   "https://maps.google.com",
+                        "traductor":     "https://translate.google.com",
+                        "translate":     "https://translate.google.com",
+                        "vercel":        "https://vercel.com",
+                        "supabase":      "https://supabase.com",
+                        "railway":       "https://railway.app",
+                        "heroku":        "https://heroku.com",
+                        "trello":        "https://trello.com",
+                        "asana":         "https://asana.com",
+                        "jira":          "https://www.atlassian.com/software/jira",
+                        "discord":       "https://discord.com/app",
+                        "slack":         "https://slack.com",
+                        "zoom":          "https://zoom.us",
+                        "teams":         "https://teams.microsoft.com",
+                        "outlook":       "https://outlook.live.com",
+                        "office":        "https://www.office.com",
+                        "onedrive":      "https://onedrive.live.com",
                     }
+
+                    if not app:
+                        self._pedir("abrir_app", {}, "¿Qué quieres que abra?")
+                        return
+
+                    # Caso A: sitio en lista conocida → URL exacta
                     if app in _sitios_web:
-                        import webbrowser as _wb
-                        _wb.open(_sitios_web[app])
+                        webbrowser.open(_sitios_web[app])
                         self.hablar(f"Abriendo {app}.")
                         self.registrar_actividad(f"Abrió web {app}")
                         return
-                    if app:
-                        self.sistema.open_application(app)
-                    else:
-                        self._pedir("abrir_app", {}, "¿Qué aplicación quieres que abra?")
+
+                    # Caso B: el usuario dijo "en internet/google" pero el sitio
+                    # no está en la lista → construir URL y abrir en el navegador.
+                    # Ejemplo: "abre amazon en internet" → https://www.amazon.com
+                    if abrir_en_web:
+                        # Quitar palabras comunes que no forman parte del dominio
+                        nombre_url = app.replace(" ", "")
+                        url = f"https://www.{nombre_url}.com"
+                        webbrowser.open(url)
+                        self.hablar(f"Abriendo {app} en el navegador.")
+                        self.registrar_actividad(f"Abrió web {app}")
+                        return
+
+                    # Caso C: sin sufijo "en internet" → intentar como app local
+                    self.sistema.open_application(app)
                     return
+
 
         if "cierra todo" in cmd_l or "cerrar todo" in cmd_l or "ciérralo todo" in cmd_l:
             self.sistema.cerrar_todo()
@@ -663,7 +724,6 @@ class LiaAssistant:
             consulta = (cmd_l.replace("traduce", "").replace("traducir", "")
                              .replace("cómo se dice", "").strip())
             if consulta:
-                import webbrowser, urllib.parse
                 webbrowser.open(f"https://translate.google.com/?text={urllib.parse.quote(consulta)}")
                 self.hablar(f"Buscando traducción de '{consulta}'.")
             else:
@@ -689,16 +749,26 @@ class LiaAssistant:
             self.internet.abrir_noticias()
             return
 
-        if "busca " in cmd_l or "buscar " in cmd_l:
-            consulta = cmd_l.replace("busca", "").replace("buscar", "").strip()
-            if consulta:
-                self.internet.buscar_google(consulta)
-            return
-
-        # ── Recalibrar micrófono ──────────────────────────────────────────────
-        if "recalibra" in cmd_l or ("calibra" in cmd_l and "micro" in cmd_l):
-            self.detector.calibrar()
-            self.hablar("Micrófono recalibrado.")
+        # ── Calibrar aplausos (perfil personalizado) ──────────────────────────
+        if ("calibrar aplausos" in cmd_l or "calibrar micrófono" in cmd_l
+                or "calibrar microfono" in cmd_l or "recalibrar" in cmd_l
+                or ("calibra" in cmd_l and "aplausos" in cmd_l)):
+            self.hablar("Voy a calibrar el detector de aplausos. Abre la consola y sigue las instrucciones.")
+            import threading as _th
+            import subprocess as _sp
+            import sys as _sys
+            import os as _os
+            _script = _os.path.join(
+                _os.path.dirname(_os.path.abspath(__file__)), "calibrar_perfil.py"
+            )
+            def _run_calibrar():
+                try:
+                    _sp.run([_sys.executable, _script], check=True)
+                    self.detector.recargar_perfil()
+                    self.hablar("Calibración completada. Umbrales personalizados cargados.")
+                except Exception as _ex:
+                    self.hablar("Hubo un error durante la calibración. Revisa la consola.")
+            _th.Thread(target=_run_calibrar, daemon=True).start()
             return
 
         # ── Sistema ───────────────────────────────────────────────────────────
@@ -929,23 +999,98 @@ class LiaAssistant:
 
         self.hablar("¿Qué carpeta quieres que abra?")
 
-    def _cmd_buscar_carpeta(self, cmd_l: str):
-        """Parsea 'busca [término] en [carpeta]'."""
-        for trigger in ("busca ", "encuentra ", "buscar "):
+    # ─────────────────────────────────────────────────────────────────────────
+    # Búsqueda unificada: internet o carpeta
+    # ─────────────────────────────────────────────────────────────────────────
+
+    # Palabras que indican "buscar en la web"
+    _KEYWORDS_WEB = (
+        "en internet", "en la web", "en google", "en línea", "en linea",
+        "en el buscador", "online", "en la red", "por internet",
+    )
+
+    # Palabras que indican "buscar en carpeta local"
+    _KEYWORDS_CARPETA = (
+        "en la carpeta", "en mis documentos", "en documentos",
+        "en descargas", "en el escritorio", "en mis descargas",
+        "en imágenes", "en imagenes", "en videos", "en música", "en musica",
+        "en mis imágenes", "en mis imagenes", "en fotos",
+    )
+
+    def _cmd_buscar(self, cmd_l: str):
+        """
+        Enrutador principal de búsqueda.
+        Distingue tres casos:
+          1. "busca X en internet/google/web"  → abre Google con la consulta
+          2. "busca X en la carpeta Z"          → busca archivos en Z
+          3. "busca X en [carpeta conocida]"    → busca archivos en la carpeta
+          4. "busca X" (sin destino)            → Google por defecto
+        """
+        # Extraer lo que va después del verbo de búsqueda
+        resto = cmd_l
+        for trigger in ("buscar información sobre ", "busca información sobre ",
+                        "buscar información de ", "busca información de ",
+                        "busca ", "buscar ", "encuentra "):
             if trigger in cmd_l:
                 resto = cmd_l.split(trigger, 1)[-1].strip()
                 break
-        else:
+
+        if not resto:
+            self.hablar("¿Qué quieres que busque?")
             return
 
+        # ── Caso 1: búsqueda web explícita ────────────────────────────────────
+        for kw in self._KEYWORDS_WEB:
+            if resto.endswith(kw) or f" {kw} " in resto:
+                consulta = resto
+                for k in self._KEYWORDS_WEB:
+                    consulta = consulta.replace(k, "").strip()
+                consulta = consulta.strip(" ,.")
+                if consulta:
+                    self.internet.buscar_google(consulta)
+                else:
+                    self.hablar("¿Qué quieres buscar en internet?")
+                return
+
+        # ── Caso 2: "en la carpeta X" ─────────────────────────────────────────
+        if "en la carpeta " in resto:
+            partes        = resto.split("en la carpeta ", 1)
+            termino       = partes[0].strip().strip(" ,.")
+            nombre_carpeta = partes[1].strip()
+            if termino:
+                self.sistema.buscar_en_carpeta(termino, nombre_carpeta)
+            else:
+                self.hablar("¿Qué quieres buscar?")
+            return
+
+        # ── Caso 3: "en [carpeta conocida o alias]" ────────────────────────────
         if " en " in resto:
+            # Tomar el último "en X" como destino de carpeta
             partes        = resto.rsplit(" en ", 1)
             termino       = partes[0].strip()
-            nombre_carpeta = partes[1].strip()
-            self.sistema.buscar_en_carpeta(termino, nombre_carpeta)
-        else:
-            self._pedir("buscar_carpeta", {"termino": resto},
-                        f"¿En qué carpeta quieres buscar '{resto}'?")
+            destino       = partes[1].strip()
+
+            # Si el destino suena a una carpeta conocida → buscar archivos
+            _alias_carpeta = (
+                "documentos", "mis documentos", "descargas", "escritorio",
+                "imágenes", "imagenes", "fotos", "videos", "música", "musica",
+                "notas", "onedrive", "desktop", "downloads", "documents",
+                "pictures", "home", "usuario",
+            )
+            if destino in _alias_carpeta or self.sistema.es_carpeta_conocida(destino):
+                self.sistema.buscar_en_carpeta(termino, destino)
+                return
+
+            # Si el destino no es carpeta ni web → tratar todo como búsqueda web
+            self.internet.buscar_google(resto)
+            return
+
+        # ── Caso 4: sin destino → Google ─────────────────────────────────────
+        self.internet.buscar_google(resto)
+
+    def _cmd_buscar_carpeta(self, cmd_l: str):
+        """Mantener compatibilidad con llamadas internas (pending actions)."""
+        self._cmd_buscar(cmd_l)
 
     def _cmd_recordatorio(self, cmd_l: str):
         """Parsea 'recuerda [X] en [N] minutos' y variaciones."""
@@ -967,7 +1112,10 @@ class LiaAssistant:
 
     def _listen_loop(self):
         with self.microphone as src:
-            self.recognizer.adjust_for_ambient_noise(src, duration=1.5)
+            # Calibración más larga para un buen baseline de ruido ambiente
+            self.recognizer.adjust_for_ambient_noise(src, duration=2.5)
+            print(f"   Umbral de energía tras calibración: "
+                  f"{self.recognizer.energy_threshold:.0f}")
 
             while not self._shutdown_flag.is_set():
                 if not self.is_active:
@@ -976,6 +1124,11 @@ class LiaAssistant:
                 try:
                     audio = self.recognizer.listen(src, timeout=None, phrase_time_limit=10)
                     cmd   = self.recognizer.recognize_google(audio, language="es-MX").lower()
+
+                    # Suprimir detector de aplausos: el audio que acaba de procesar
+                    # el reconocedor de voz podría contener plosivos que el detector
+                    # confunde con aplausos ("Lia, abre" → 4 falsas detecciones).
+                    self.detector.notificar_voz_detectada(duracion_supresion=1.5)
 
                     if "gracias" in cmd:
                         self.cerrar_comandos_txt()
@@ -989,6 +1142,7 @@ class LiaAssistant:
                         continue
 
                     # Si hay acción pendiente, cualquier respuesta la completa
+                    # (no requiere palabra de activación)
                     if self._pending_action:
                         limpio = (cmd.replace("lía,", "").replace("lia,", "")
                                      .replace("lía", "").replace("lia", "")
@@ -997,12 +1151,17 @@ class LiaAssistant:
                             self._parse_command(limpio)
                         continue
 
-                    if "lia" in cmd or "lía" in cmd:
-                        limpio = (cmd.replace("lía,", "").replace("lia,", "")
-                                     .replace("lía", "").replace("lia", "")
-                                     .strip().strip(",. "))
-                        if limpio:
-                            self._parse_command(limpio)
+                    # ── Palabra de activación obligatoria ─────────────────────
+                    # El audio debe contener "Lia" para ser procesado.
+                    # Evita que TV, música o conversaciones de fondo disparen comandos.
+                    if "lia" not in cmd and "lía" not in cmd:
+                        continue
+
+                    limpio = (cmd.replace("lía,", "").replace("lia,", "")
+                                 .replace("lía", "").replace("lia", "")
+                                 .strip().strip(",. "))
+                    if limpio:
+                        self._parse_command(limpio)
 
                 except sr.UnknownValueError:
                     pass

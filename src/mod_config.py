@@ -36,7 +36,9 @@ class ConfigManager:
     """
 
     def __init__(self, root_dir: str):
-        self._config_path = os.path.join(root_dir, "lia_config.json")
+        _data_dir = os.path.join(root_dir, "data")
+        os.makedirs(_data_dir, exist_ok=True)
+        self._config_path = os.path.join(_data_dir, "lia_config.json")
         self._config      = dict(_DEFAULTS)
         self._cargar()
 

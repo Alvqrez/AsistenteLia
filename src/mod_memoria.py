@@ -12,10 +12,12 @@ logger = logging.getLogger("lia.memoria")
 
 _SRC_DIR        = os.path.dirname(os.path.abspath(__file__))
 _ROOT_DIR       = os.path.dirname(_SRC_DIR)
+_DATA_DIR       = os.path.join(_ROOT_DIR, "data")
+os.makedirs(_DATA_DIR, exist_ok=True)
 NOTAS_DIR       = os.path.join(os.path.expanduser("~"), "Documents", "Notas")
 PENDIENTES_PATH = os.path.join(NOTAS_DIR, "Pendientes.md")
-HISTORIAL_PATH  = os.path.join(_ROOT_DIR, "lia_historial.json")
-MEMORIA_PATH    = os.path.join(_ROOT_DIR, "lia_memoria.json")
+HISTORIAL_PATH  = os.path.join(_DATA_DIR, "lia_historial.json")
+MEMORIA_PATH    = os.path.join(_DATA_DIR, "lia_memoria.json")
 
 
 class MemoryTools:

@@ -1,0 +1,11 @@
+{
+  "pendientes_path": "C:\\Users\\dell\\Documents\\Notas\\Pendientes.md",
+  "notas_dir": "C:\\Users\\dell\\Documents\\Notas",
+  "tts_rate": 175,
+  "clap_threshold_multiplier": 3.0,
+  "clap_window": 2.5,
+  "sequence_gap": 0.9,
+  "idioma_reconocimiento": "es-MX",
+  "pendientes_limite": 5,
+  "pomodoro_minutos": 25
+}

@@ -12,9 +12,11 @@ from typing import Optional
 
 logger = logging.getLogger("lia.recordatorios")
 
-_SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+_SRC_DIR  = os.path.dirname(os.path.abspath(__file__))
 _ROOT_DIR = os.path.dirname(_SRC_DIR)
-REC_PATH  = os.path.join(_ROOT_DIR, "lia_recordatorios.json")
+_DATA_DIR = os.path.join(_ROOT_DIR, "data")
+os.makedirs(_DATA_DIR, exist_ok=True)
+REC_PATH  = os.path.join(_DATA_DIR, "lia_recordatorios.json")
 
 _MESES = {
     "enero": 1, "febrero": 2, "marzo": 3, "abril": 4,
