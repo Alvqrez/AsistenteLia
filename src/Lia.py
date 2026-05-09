@@ -525,6 +525,17 @@ class LiaAssistant:
             for trigger in ("abre ", "abrir "):
                 if trigger in cmd_l:
                     app = cmd_l.split(trigger, 1)[-1].strip()
+                    # Eliminar sufijos de navegador/contexto que no forman parte del nombre
+                    # Ej: "youtube en google", "youtube en internet", "youtube en chrome"
+                    _sufijos_navegador = (
+                        " en google", " en internet", " en el navegador",
+                        " en chrome", " en firefox", " en edge", " en opera",
+                        " en el explorador", " en brave",
+                    )
+                    for sufijo in _sufijos_navegador:
+                        if app.endswith(sufijo):
+                            app = app[: -len(sufijo)].strip()
+                            break
                     if app:
                         self.sistema.open_application(app)
                     else:

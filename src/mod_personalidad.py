@@ -55,23 +55,23 @@ class Persona:
 
     def modo_estudio(self):
         return self._r([
-            f"Modo Estudio activado, {self.nombre}. Intentemos concentrarnos esta vez.",
-            f"Modo Estudio listo. He abierto sus distracciones... digo, sus herramientas.",
-            f"Modo Estudio en marcha. Por favor, evite YouTube. Otra vez.",
+            f"Modo Estudio activado.",
+            f"Modo Estudio listo.",
+            f"Modo Estudio en marcha.",
         ])
 
     def modo_codigo(self):
         return self._r([
-            f"Modo Codigo activado, {self.nombre}. Procuremos que compile a la primera.",
-            f"Entorno de desarrollo listo. Stack Overflow esta a un Alt-Tab, como siempre.",
-            f"Modo Codigo en linea. Buena suerte con los bugs, {self.nombre}.",
+            f"Modo Codigo activado.",
+            f"Entorno de desarrollo listo.",
+            f"Modo Codigo en linea.",
         ])
 
     def modo_juego(self):
         return self._r([
-            f"Modo Juego activado, {self.nombre}. Recuerde que maniana hay que trabajar.",
-            f"Todo listo para jugar. La productividad puede esperar, evidentemente.",
-            f"Modo Juego en linea. Que gane esta vez.",
+            f"Modo Juego activado.",
+            f"Modo Juego listo.",
+            f"Modo Juego en linea.",
         ])
 
     # ----- Comandos cotidianos -----
