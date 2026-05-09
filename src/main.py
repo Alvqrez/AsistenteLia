@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""
-main.py — Punto de entrada de Lia v4.6.0
-Arranca Lia en segundo plano. La GUI NO se abre al iniciar;
-solo aparece el icono en el System Tray.
-    - Doble clic en el icono  → abre la GUI
-    - Clic derecho            → menú contextual
-    - python main.py --show   → abre la GUI directamente al iniciar
-"""
-
 import sys
 import os
+
+if getattr(sys, "frozen", False):
+    # Ejecutando como .exe empaquetado
+    _ROOT_OVERRIDE = sys._MEIPASS
+else:
+    _ROOT_OVERRIDE = None
+
 import threading
 import warnings
 

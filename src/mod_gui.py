@@ -1,19 +1,8 @@
 #!/usr/bin/env python3
-"""
-mod_gui.py — Lia Neural Interface v5.0.0
-=========================================
-Estética: Cyberpunk / JARVIS / visionOS
-· Sidebar de navegación izquierda
-· Chat central con burbujas animadas
-· Orbe de voz animado (60 fps)
-· Botón micrófono con glow pulsante
-· Modal de configuración glassmorphism
-· Transiciones suaves
-"""
-
 import json
 import math
 import os
+import sys as _sys
 from datetime import datetime
 
 from PySide6.QtCore import (
@@ -37,7 +26,7 @@ from PySide6.QtWidgets import (
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
 _SRC_DIR    = os.path.dirname(os.path.abspath(__file__))
-_ROOT_DIR   = os.path.dirname(_SRC_DIR)
+_ROOT_DIR = _sys._MEIPASS if getattr(_sys, "frozen", False) else os.path.dirname(_SRC_DIR)
 _MODOS_PATH = os.path.join(_ROOT_DIR, "lia_modos.json")
 
 # ─── Palette ──────────────────────────────────────────────────────────────────

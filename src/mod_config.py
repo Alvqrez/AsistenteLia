@@ -1,20 +1,4 @@
 #!/usr/bin/env python3
-"""
-mod_config.py  –  Módulo de Configuración  (NUEVO en v4.0)
-Responsabilidades:
-  · Leer / escribir lia_config.json en la raíz del proyecto
-  · Exponer get() / set() a todos los módulos
-  · Proveer un asistente de configuración por voz
-
-Por qué existe:
-  En v3 muchas rutas (PENDIENTES_PATH, etc.) estaban hardcodeadas.
-  Si el usuario tiene Obsidian en otra carpeta, o un nombre de usuario
-  diferente a 'dell', todo falla silenciosamente.
-  Este módulo resuelve ese problema centralizando la configuración.
-
-Uso desde cualquier módulo:
-    ruta = self.lia.config.get("pendientes_path")
-"""
 
 import os
 import json

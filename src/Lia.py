@@ -1,15 +1,7 @@
 #!/usr/bin/env python3
-# Lia.py — Asistente personal v4.6.0
-# Cambios vs v4.5.1:
-#   - Sistema de "acción pendiente": Lia pregunta datos que faltan y los espera.
-#   - Comandos de archivo/carpeta: crea/abre con preguntas contextuales.
-#   - Lenguaje más natural: docenas de variaciones nuevas por comando.
-#   - Corrección de ruta lia_modos.json (era "../lia_modos.json").
-#   - Ajuste de energy_threshold del reconocedor para reducir falsos positivos.
-#   - Nuevo comando "cancela" para cancelar acción pendiente.
 
 import os
-import sys
+import sys as _sys
 import threading
 import time
 
@@ -28,7 +20,7 @@ from mod_focus         import FocusTools
 from mod_resumen       import ResumenTools
 
 _SRC_DIR          = os.path.dirname(os.path.abspath(__file__))
-_ROOT_DIR         = os.path.dirname(_SRC_DIR)
+_ROOT_DIR = _sys._MEIPASS if getattr(_sys, "frozen", False) else os.path.dirname(_SRC_DIR)
 COMANDOS_TXT_PATH = os.path.join(_ROOT_DIR, "lia_comandos.txt")
 
 # ── Sinónimos ──────────────────────────────────────────────────────────────────

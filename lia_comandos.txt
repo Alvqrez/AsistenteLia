@@ -1,0 +1,71 @@
++==============================================================+
+|                   ASISTENTE LIA  v4.6.0                      |
++==============================================================+
+|  APLAUSOS                                                     |
+|    1 aplauso   ->  Modo Estudio  (ChatGPT + WhatsApp)        |
+|    2 aplausos  ->  Modo Codigo   (VS Code + GitHub + Spotify)|
+|    3 aplausos  ->  Modo Juego    (Discord + TimerResolution) |
+|                                                               |
+|  COMANDOS DE VOZ  (di "Lia, ...")                             |
+|  -- Modos --------------------------------------------------- |
+|    "a estudiar" / "modo estudio" / "voy a trabajar"          |
+|    "a programar" / "modo código" / "quiero codear"           |
+|    "a jugar" / "gaming" / "modo juego"                       |
+|  -- Rutina -------------------------------------------------- |
+|    "inicio" / "buenos días" / "empecemos"                    |
+|  -- Voz y control ------------------------------------------ |
+|    "silencio" / "cállate" / "mute"                           |
+|    "habla" / "activa voz"                                     |
+|    "pausate" / "voy a descansar"                              |
+|    "ya regresé" / "ya volví"  (reactivar desde pausa)        |
+|    "apagate"                                                  |
+|    "cancela"  (cancela la pregunta pendiente)                |
+|  -- Aplicaciones ------------------------------------------- |
+|    "abre [app]"                                              |
+|    "cierra todo"                                             |
+|  -- Archivos y carpetas ------------------------------------ |
+|    "crea archivo python [nombre] en [carpeta]"               |
+|    "crea archivo js/html/txt/json [nombre] en [carpeta]"     |
+|    "crea carpeta [nombre] en [carpeta]"                      |
+|    "abre carpeta [nombre]" / "abre documentos/descargas"     |
+|    "busca [término] en [carpeta]"                            |
+|  -- Pendientes --------------------------------------------- |
+|    "pendientes" / "mis tareas" / "qué debo hacer"            |
+|    "anota [tarea]" / "apunta [tarea]"                        |
+|    "tarea X lista"                                           |
+|  -- Notas -------------------------------------------------- |
+|    "nota [clave] [texto]"                                    |
+|    "recuerda nota [clave]"                                   |
+|  -- Dev ---------------------------------------------------- |
+|    "crea proyecto React en [carpeta]"                        |
+|    "git status / push / pull / log"                          |
+|    "nueva rama [nombre]" / "cambia rama [nombre]"            |
+|    "clona [url]"                                             |
+|    "abre vscode en [carpeta]"                                |
+|    "docs python" / "mdn" / "stackoverflow"                   |
+|  -- Productividad ------------------------------------------ |
+|    "pomodoro [N]" / "temporizador [N] minutos"               |
+|    "recuerda [X] en [N] minutos"                             |
+|    "qué hora" / "qué fecha"                                  |
+|    "calcula [operación]" / "cuánto es X por Y"               |
+|    "convierte [N] [unidad] a [unidad]"                       |
+|  -- Clima e internet --------------------------------------- |
+|    "clima" / "va a llover"                                   |
+|    "busca [X]" / "youtube [X]" / "wikipedia [X]"             |
+|    "maps [lugar]" / "abre maps [lugar]"                      |
+|    "mi ip" / "hay internet"                                  |
+|    "noticias"                                                |
+|    "traduce [texto]"                                         |
+|  -- Sistema ------------------------------------------------ |
+|    "sistema" / "cpu" / "rendimiento"                         |
+|    "disco" / "cuánto espacio libre"                          |
+|    "procesos pesados"                                        |
+|    "bloquea" / "apaga la pc" / "cancela apagado"             |
+|  -- Modo Enfoque ------------------------------------------- |
+|    "modo enfoque [N]" / "desbloquea sitios"                  |
+|  -- Misc --------------------------------------------------- |
+|    "resumen" / "qué hice hoy"                                |
+|    "comandos" / "ayuda"                                      |
+|    "gracias"                                                 |
+|    "recalibra" (recalibra el micrófono)                      |
++==============================================================+
