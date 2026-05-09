@@ -165,10 +165,12 @@ class SystemTools:
             self.lia.hablar(f"No tenía la URL de {nombre}, {self.lia.persona.nombre}. Lo busqué en Google.")
             self.lia.registrar_actividad(f"Buscó web: {nombre}")
 
-    def open_application(self, nombre: str):
+    def open_application(self, nombre: str, silent: bool = False):
+        """Abre una aplicación. silent=True suprime los mensajes de voz (útil en modos)."""
         nombre_limpio = nombre.lower().strip()
         if not nombre_limpio:
-            self.lia.hablar(self.lia.persona.no_entendi())
+            if not silent:
+                self.lia.hablar(self.lia.persona.no_entendi())
             return
 
         ruta = self._resolver_ruta(nombre_limpio)
@@ -180,7 +182,8 @@ class SystemTools:
                     subprocess.Popen(ruta, shell=True)
                 else:
                     subprocess.Popen(f'"{ruta}"', shell=True)
-                self.lia.hablar(self.lia.persona.abriendo_app(nombre))
+                if not silent:
+                    self.lia.hablar(self.lia.persona.abriendo_app(nombre))
                 self.lia.registrar_actividad(f"Abrió {nombre}")
                 if hasattr(self.lia, "contexto"):
                     self.lia.contexto.registrar_apertura_app(nombre_limpio)
@@ -191,7 +194,8 @@ class SystemTools:
         try:
             subprocess.Popen(nombre_limpio, shell=True,
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            self.lia.hablar(self.lia.persona.abriendo_app(nombre))
+            if not silent:
+                self.lia.hablar(self.lia.persona.abriendo_app(nombre))
             self.lia.registrar_actividad(f"Abrió (shell) {nombre}")
             if hasattr(self.lia, "contexto"):
                 self.lia.contexto.registrar_apertura_app(nombre_limpio)
@@ -210,7 +214,8 @@ class SystemTools:
                 for archivo in files:
                     if nombre_limpio in archivo.lower() and archivo.endswith(".lnk"):
                         os.startfile(os.path.join(root, archivo))
-                        self.lia.hablar(self.lia.persona.abriendo_app(archivo.replace(".lnk", "")))
+                        if not silent:
+                            self.lia.hablar(self.lia.persona.abriendo_app(archivo.replace(".lnk", "")))
                         self.lia.registrar_actividad(f"Abrió {archivo}")
                         if hasattr(self.lia, "contexto"):
                             self.lia.contexto.registrar_apertura_app(nombre_limpio)
@@ -219,24 +224,28 @@ class SystemTools:
         url_conocida = self.WEB_MAP.get(nombre_limpio)
         if url_conocida:
             webbrowser.open(url_conocida)
-            self.lia.hablar(f"No lo encontré instalado, {self.lia.persona.nombre}. Lo abrí en el navegador.")
+            if not silent:
+                self.lia.hablar(f"No lo encontré instalado, {self.lia.persona.nombre}. Lo abrí en el navegador.")
             if hasattr(self.lia, "contexto"):
                 self.lia.contexto.registrar_apertura_url(url_conocida)
             return
 
-        self.lia.hablar(self.lia.persona.app_no_encontrada(nombre))
+        if not silent:
+            self.lia.hablar(self.lia.persona.app_no_encontrada(nombre))
         logger.warning("App no encontrada: '%s'", nombre)
 
-    def open_url(self, url: str, nombre: str):
+    def open_url(self, url: str, nombre: str, silent: bool = False):
         try:
             webbrowser.open(url)
-            self.lia.hablar(self.lia.persona.abriendo_app(nombre))
+            if not silent:
+                self.lia.hablar(self.lia.persona.abriendo_app(nombre))
             self.lia.registrar_actividad(f"Abrió {nombre}")
             if hasattr(self.lia, "contexto"):
                 self.lia.contexto.registrar_apertura_url(url)
         except Exception as ex:
             logger.error("Error al abrir URL '%s': %s", url, ex)
-            self.lia.hablar(self.lia.persona.error_generico(f"abrir {nombre}"))
+            if not silent:
+                self.lia.hablar(self.lia.persona.error_generico(f"abrir {nombre}"))
 
     def cerrar_todo(self):
         procesos = ["chrome.exe", "msedge.exe", "firefox.exe",
@@ -248,13 +257,14 @@ class SystemTools:
         self.lia.hablar(self.lia.persona.cerrando_todo())
         self.lia.registrar_actividad("Cerró Todo")
 
-    def abrir_desde_descargas(self, nombre: str):
+    def abrir_desde_descargas(self, nombre: str, silent: bool = False):
         carpeta = os.path.join(os.path.expanduser("~"), "Downloads")
         for root, _, files in os.walk(carpeta):
             for archivo in files:
                 if nombre.lower() in archivo.lower():
                     os.startfile(os.path.join(root, archivo))
-                    self.lia.hablar(self.lia.persona.abriendo_app(archivo))
+                    if not silent:
+                        self.lia.hablar(self.lia.persona.abriendo_app(archivo))
                     self.lia.registrar_actividad(f"Abrió desde Descargas: {archivo}")
                     return
         logger.info("'%s' no encontrado en Descargas.", nombre)
@@ -321,30 +331,30 @@ class SystemTools:
     def modo_estudio(self):
         if hasattr(self.lia, "contexto"):
             self.lia.contexto.limpiar_ultimo_modo()
-        self.lia.hablar(self.lia.persona.modo_estudio())
-        self.open_url("https://chat.openai.com", "ChatGPT")
+        self.lia.hablar(self.lia.persona.modo_estudio())   # solo anuncia el MODO
+        self.open_url("https://chat.openai.com", "ChatGPT", silent=True)
         time.sleep(0.4)
-        self.open_url("https://web.whatsapp.com", "WhatsApp")
+        self.open_url("https://web.whatsapp.com", "WhatsApp", silent=True)
         self.lia.registrar_actividad("Modo Estudio")
 
     def modo_programacion(self):
         if hasattr(self.lia, "contexto"):
             self.lia.contexto.limpiar_ultimo_modo()
-        self.lia.hablar(self.lia.persona.modo_codigo())
-        self.open_application("vscode")
+        self.lia.hablar(self.lia.persona.modo_codigo())    # solo anuncia el MODO
+        self.open_application("vscode", silent=True)
         time.sleep(0.4)
-        self.open_url("https://github.com", "GitHub")
+        self.open_url("https://github.com", "GitHub", silent=True)
         time.sleep(0.4)
-        self.open_application("spotify")
+        self.open_application("spotify", silent=True)
         self.lia.registrar_actividad("Modo Programación")
 
     def modo_juego(self):
         if hasattr(self.lia, "contexto"):
             self.lia.contexto.limpiar_ultimo_modo()
-        self.lia.hablar(self.lia.persona.modo_juego())
-        self.open_application("discord")
+        self.lia.hablar(self.lia.persona.modo_juego())     # solo anuncia el MODO
+        self.open_application("discord", silent=True)
         time.sleep(0.5)
-        self.abrir_desde_descargas("TimerResolution")
+        self.abrir_desde_descargas("TimerResolution", silent=True)
         self.lia.registrar_actividad("Modo Juego")
 
     def obtener_info_sistema(self):

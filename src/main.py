@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-main.py — Punto de entrada de Lia v4.4.1
+main.py — Punto de entrada de Lia v4.6.0
 Arranca Lia en segundo plano. La GUI NO se abre al iniciar;
 solo aparece el icono en el System Tray.
     - Doble clic en el icono  → abre la GUI
@@ -11,13 +11,18 @@ solo aparece el icono en el System Tray.
 import sys
 import os
 import threading
+import warnings
+
+# Silenciar el DeprecationWarning de Qt.AA_UseHighDpiPixmaps antes de importar PySide6
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="PySide6")
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import Qt
+# QT_ENABLE_HIGHDPI_SCALING se activa por defecto en PySide6 >= 6.4
+# ya NO hace falta setear AA_UseHighDpiPixmaps manualmente.
 
 from mod_gui import LiaMainWindow, LiaWorker, STYLE_GLOBAL
 
@@ -29,13 +34,8 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Lia")
     app.setApplicationDisplayName("Lia Asistente Personal")
-    app.setQuitOnLastWindowClosed(False)  # no cerrar aunque se cierre la ventana
+    app.setQuitOnLastWindowClosed(False)
     app.setStyleSheet(STYLE_GLOBAL)
-
-    try:
-        app.setAttribute(Qt.AA_UseHighDpiPixmaps)
-    except Exception:
-        pass
 
     # Crear la ventana PERO no mostrarla todavia
     window = LiaMainWindow(lia_instance=None)
@@ -52,7 +52,7 @@ def main():
             lia._gui_window = window
             window.lia = lia
             window.signal_status.emit("activa")
-            window.signal_log.emit("Lia v4.4.1 en linea. A su servicio, Leonardo.")
+            window.signal_log.emit("Lia v4.6.0 en linea. A su servicio, Leonardo.")
 
             worker = LiaWorker(lia)
             window.worker = worker
