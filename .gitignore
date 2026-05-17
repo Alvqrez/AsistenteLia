@@ -1,17 +1,50 @@
-build/
-dist/
-__pycache__/
-*.pyc
-*.pyo
-*.spec
-data/lia_historial.json
-.venv
-.venv/
-.idea/
-
 # Python
-
-# PyInstaller
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+venv/
+ENV/
+env/
 
 # IDE
 .vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+
+# Proyecto específico
+data/*.json
+*.spec
+.pytest_cache/
+.coverage
+
+# Archivos temporales
+*.tmp
+*.bak
+.env

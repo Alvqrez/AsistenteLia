@@ -1,71 +1,31 @@
-#!/usr/bin/env python3
+# main.py
 import sys
-import os
-
-if getattr(sys, "frozen", False):
-    # Ejecutando como .exe empaquetado
-    _ROOT_OVERRIDE = sys._MEIPASS
-else:
-    _ROOT_OVERRIDE = None
-
-import threading
-import warnings
-
-# Silenciar el DeprecationWarning de Qt.AA_UseHighDpiPixmaps antes de importar PySide6
-warnings.filterwarnings("ignore", category=DeprecationWarning, module="PySide6")
-
-_HERE = os.path.dirname(os.path.abspath(__file__))
-if _HERE not in sys.path:
-    sys.path.insert(0, _HERE)
-
 from PySide6.QtWidgets import QApplication
-# QT_ENABLE_HIGHDPI_SCALING se activa por defecto en PySide6 >= 6.4
-# ya NO hace falta setear AA_UseHighDpiPixmaps manualmente.
-
-from mod_gui import LiaMainWindow, LiaWorker, STYLE_GLOBAL
+from src.Lia import LiaAssistant
+from src.mod_gui import LiaMainWindow
 
 
 def main():
-    # --show abre la GUI inmediatamente (util para debug manual)
-    abrir_gui = "--show" in sys.argv
-
     app = QApplication(sys.argv)
-    app.setApplicationName("Lia")
-    app.setApplicationDisplayName("Lia Asistente Personal")
-    app.setQuitOnLastWindowClosed(False)
-    app.setStyleSheet(STYLE_GLOBAL)
 
-    # Crear la ventana PERO no mostrarla todavia
-    window = LiaMainWindow(lia_instance=None)
-    window.signal_status.emit("iniciando")
+    print("[MAIN] Iniciando Lia...")
 
-    if abrir_gui:
+    try:
+        # Crea la instancia de Lia
+        lia = LiaAssistant()
+
+        # Crea y muestra la ventana
+        window = LiaMainWindow(lia)
         window.show()
 
-    # Inicializar Lia en hilo separado para no bloquear el tray
-    def _init_lia():
-        try:
-            from Lia import LiaAssistant
-            lia = LiaAssistant()
-            lia._gui_window = window
-            window.lia = liaW
-            window.signal_status.emit("activa")
-            window.signal_log.emit("Lia v4.6.0 en linea. A su servicio, Leonardo.")
+        print("[MAIN] Interfaz mostrada. ¡Listo!")
 
-            worker = LiaWorker(lia)
-            window.worker = worker
-            worker.log_updated.connect(window.signal_log)
-            worker.start()
-        except Exception as ex:
-            window.signal_log.emit(f"[ERROR al iniciar Lia] {ex}")
-            window.signal_status.emit("apagada")
-            import traceback
-            traceback.print_exc()
+        sys.exit(app.exec())
 
-    t = threading.Thread(target=_init_lia, daemon=True)
-    t.start()
-
-    sys.exit(app.exec())
+    except Exception as e:
+        print(f"[ERROR] {e}")
+        import traceback
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
