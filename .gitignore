@@ -48,3 +48,6 @@ data/*.json
 *.tmp
 *.bak
 .env
+
+# Build & Distribution
+*.exe
