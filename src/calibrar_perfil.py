@@ -266,8 +266,14 @@ def _calcular_umbrales(silencio: dict, teclado: dict, voz: dict,
     hf_min = max(hf_candidato, 0.08)
 
     # ── Duración del pico ─────────────────────────────────────────────────────
-    # Aplausos duran entre dur_p10 y dur_p90
-    # Teclado tiene dur_p95 muy corto
+    # Mínimo: punto medio entre teclado_dur_p95 y aplauso_dur_p10.
+    # Rechaza golpes muy cortos (teclado ~10ms, clic ~5ms) sin afectar aplausos.
+    teclado_dur_max = teclado.get("dur_p95", 0.015)
+    aplauso_dur_min = aplausos["dur_p10"]
+    dur_min = (teclado_dur_max + aplauso_dur_min) / 2
+    dur_min = min(dur_min, aplauso_dur_min * 0.80)  # no rechazar el 20% más corto de aplausos
+    dur_min = max(dur_min, 0.012)                    # nunca menos de 12ms
+
     # Máximo = p90 del aplauso + 30% de margen
     dur_max = aplausos["dur_p90"] * 1.30
     dur_max = max(dur_max, 0.06)                   # mínimo absoluto de 60ms
@@ -283,6 +289,7 @@ def _calcular_umbrales(silencio: dict, teclado: dict, voz: dict,
         "crest_factor_min":  round(cf_min, 2),
         "crest_factor_max":  28.0,
         "min_high_freq":     round(hf_min, 3),
+        "min_peak_duration": round(dur_min, 3),
         "max_peak_duration": round(dur_max, 3),
         "voz_low_thr":       round(voz_low_thr, 3),
         "voz_centroid_thr":  round(voz_centroid_thr, 0),
@@ -326,7 +333,7 @@ def _imprimir_reporte(umbrales: dict):
     print(f"  RMS mínimo      (min_clap_rms):    {umbrales['min_clap_rms']:.4f}")
     print(f"  Crest factor    (mín / máx):       {umbrales['crest_factor_min']:.2f} / {umbrales['crest_factor_max']:.1f}")
     print(f"  Altas frecuencias mínimas:         {umbrales['min_high_freq']:.3f}")
-    print(f"  Duración máx del pico:             {umbrales['max_peak_duration']*1000:.0f}ms")
+    print(f"  Duración del pico (mín / máx):     {umbrales['min_peak_duration']*1000:.0f}ms / {umbrales['max_peak_duration']*1000:.0f}ms")
     print(f"  Ruido ambiente detectado:          {umbrales['noise_floor']:.4f}")
     print("="*60)
     print("\n  Lia cargará este perfil automáticamente al iniciar.")

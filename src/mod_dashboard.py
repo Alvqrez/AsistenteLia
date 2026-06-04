@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+# DEPRECADO (v5.0): el dashboard se consolidó en la GUI React (web/), alimentada
+# con datos reales vía services/dashboard_data.py + PythonBridge.getDashboardData.
+# El comando de voz "dashboard" ahora trae al frente la ventana principal.
+# Este popup tkinter se conserva solo para el fallback de Lia.py; eliminar tras
+# validar v5.0.
 
 import logging
 import os

@@ -14,18 +14,21 @@ _SRC_DIR   = os.path.dirname(os.path.abspath(__file__))
 _ROOT_DIR  = os.path.dirname(_SRC_DIR)
 _DATA_DIR  = os.path.join(_ROOT_DIR, "data")
 os.makedirs(_DATA_DIR, exist_ok=True)
-NOTAS_DIR  = os.path.join(os.path.expanduser("~"), "Documents", "Notas")
-
-METAS_PATH      = os.path.join(NOTAS_DIR, "Metas.md")
-HABITOS_PATH    = os.path.join(NOTAS_DIR, "Habitos.md")
-PROYECTOS_PATH  = os.path.join(NOTAS_DIR, "Proyectos.md")
-VIDA_JSON_PATH  = os.path.join(_DATA_DIR, "lia_vida.json")
+_DEFAULT_NOTAS_DIR = os.path.join(os.path.expanduser("~"), "Documents", "Notas")
+VIDA_JSON_PATH     = os.path.join(_DATA_DIR, "lia_vida.json")
 
 
 class VidaTools:
 
     def __init__(self, parent_lia):
         self.lia  = parent_lia
+
+        cfg = getattr(parent_lia, "config", None)
+        notas_dir = (cfg.get("notas_dir") if cfg else None) or _DEFAULT_NOTAS_DIR
+        self._metas_path      = os.path.join(notas_dir, "Metas.md")
+        self._habitos_path    = os.path.join(notas_dir, "Habitos.md")
+        self._proyectos_path  = os.path.join(notas_dir, "Proyectos.md")
+
         self.data = self._cargar_json()
 
     def _cargar_json(self) -> dict:
@@ -60,7 +63,7 @@ class VidaTools:
             logger.error("No se pudo guardar lia_vida.json: %s", ex)
 
     def _asegurar_archivo(self, ruta: str, contenido_inicial: str):
-        os.makedirs(NOTAS_DIR, exist_ok=True)
+        os.makedirs(os.path.dirname(self._metas_path), exist_ok=True)
         if not os.path.exists(ruta):
             with open(ruta, "w", encoding="utf-8") as f:
                 f.write(contenido_inicial)
@@ -114,8 +117,8 @@ class VidaTools:
             logger.error("Error al agregar en '%s': %s", ruta, ex)
 
     def leer_metas(self):
-        self._asegurar_archivo(METAS_PATH, "# Metas\n\n")
-        metas = self._leer_items_md(METAS_PATH)
+        self._asegurar_archivo(self._metas_path, "# Metas\n\n")
+        metas = self._leer_items_md(self._metas_path)
         if not metas:
             self.lia.hablar("No tienes metas pendientes. ¡Agrega algunas!")
             return
@@ -127,22 +130,22 @@ class VidaTools:
         self.lia.registrar_actividad("Leyó metas")
 
     def agregar_meta(self, texto: str):
-        self._asegurar_archivo(METAS_PATH, "# Metas\n\n")
-        self._agregar_item_md(METAS_PATH, texto)
+        self._asegurar_archivo(self._metas_path, "# Metas\n\n")
+        self._agregar_item_md(self._metas_path, texto)
         self.lia.hablar(f"Meta agregada: {texto}.")
         self.lia.registrar_actividad("Agregó meta")
 
     def completar_meta(self, texto: str):
-        self._asegurar_archivo(METAS_PATH, "# Metas\n\n")
-        if self._marcar_completado_md(METAS_PATH, texto):
+        self._asegurar_archivo(self._metas_path, "# Metas\n\n")
+        if self._marcar_completado_md(self._metas_path, texto):
             self.lia.hablar(f"Meta completada: {texto}. ¡Bien hecho!")
         else:
             self.lia.hablar(f"No encontré esa meta.")
         self.lia.registrar_actividad("Completó meta")
 
     def revisar_habitos(self):
-        self._asegurar_archivo(HABITOS_PATH, "# Hábitos\n\n")
-        habitos = self._leer_items_md(HABITOS_PATH)
+        self._asegurar_archivo(self._habitos_path, "# Hábitos\n\n")
+        habitos = self._leer_items_md(self._habitos_path)
         hoy = datetime.date.today().isoformat()
         marcados_hoy = self.data.get("habitos_hoy", {}).get(hoy, [])
 
@@ -163,8 +166,8 @@ class VidaTools:
         self.lia.registrar_actividad("Revisó hábitos")
 
     def marcar_habito(self, nombre: str):
-        self._asegurar_archivo(HABITOS_PATH, "# Hábitos\n\n")
-        habitos = self._leer_items_md(HABITOS_PATH)
+        self._asegurar_archivo(self._habitos_path, "# Hábitos\n\n")
+        habitos = self._leer_items_md(self._habitos_path)
         nombre_lower = nombre.lower()
         coincidencia = next((h for h in habitos if nombre_lower in h.lower()), None)
 
@@ -201,14 +204,14 @@ class VidaTools:
         self.data["racha"][habito] = racha_info
 
     def agregar_habito(self, nombre: str):
-        self._asegurar_archivo(HABITOS_PATH, "# Hábitos\n\n")
-        self._agregar_item_md(HABITOS_PATH, nombre)
+        self._asegurar_archivo(self._habitos_path, "# Hábitos\n\n")
+        self._agregar_item_md(self._habitos_path, nombre)
         self.lia.hablar(f"Hábito agregado: {nombre}.")
         self.lia.registrar_actividad("Agregó hábito")
 
     def estado_proyectos(self):
-        self._asegurar_archivo(PROYECTOS_PATH, "# Proyectos\n\n")
-        proyectos = self._leer_items_md(PROYECTOS_PATH)
+        self._asegurar_archivo(self._proyectos_path, "# Proyectos\n\n")
+        proyectos = self._leer_items_md(self._proyectos_path)
         if not proyectos:
             self.lia.hablar("No tienes proyectos registrados.")
             return
@@ -218,14 +221,14 @@ class VidaTools:
         self.lia.registrar_actividad("Revisó proyectos")
 
     def agregar_proyecto(self, nombre: str):
-        self._asegurar_archivo(PROYECTOS_PATH, "# Proyectos\n\n")
-        self._agregar_item_md(PROYECTOS_PATH, nombre)
+        self._asegurar_archivo(self._proyectos_path, "# Proyectos\n\n")
+        self._agregar_item_md(self._proyectos_path, nombre)
         self.lia.hablar(f"Proyecto agregado: {nombre}.")
         self.lia.registrar_actividad("Agregó proyecto")
 
     def completar_proyecto(self, texto: str):
-        self._asegurar_archivo(PROYECTOS_PATH, "# Proyectos\n\n")
-        if self._marcar_completado_md(PROYECTOS_PATH, texto):
+        self._asegurar_archivo(self._proyectos_path, "# Proyectos\n\n")
+        if self._marcar_completado_md(self._proyectos_path, texto):
             self.lia.hablar(f"Proyecto completado: {texto}.")
         else:
             self.lia.hablar("No encontré ese proyecto.")
@@ -234,9 +237,9 @@ class VidaTools:
     def resumen_vida(self):
         self.lia.hablar("Resumen personal.")
 
-        metas = self._leer_items_md(METAS_PATH) if os.path.exists(METAS_PATH) else []
-        habitos = self._leer_items_md(HABITOS_PATH) if os.path.exists(HABITOS_PATH) else []
-        proyectos = self._leer_items_md(PROYECTOS_PATH) if os.path.exists(PROYECTOS_PATH) else []
+        metas = self._leer_items_md(self._metas_path) if os.path.exists(self._metas_path) else []
+        habitos = self._leer_items_md(self._habitos_path) if os.path.exists(self._habitos_path) else []
+        proyectos = self._leer_items_md(self._proyectos_path) if os.path.exists(self._proyectos_path) else []
         hoy = datetime.date.today().isoformat()
         marcados_hoy = self.data.get("habitos_hoy", {}).get(hoy, [])
         habitos_ok = len(marcados_hoy)

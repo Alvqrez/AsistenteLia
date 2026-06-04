@@ -1,6 +1,7 @@
 {
-  "pendientes_path": "%USERPROFILE%\\Documents\\Notas\\Pendientes.md",
-  "notas_dir": "%USERPROFILE%\\Documents\\Notas",
+  "clap_enabled": false,
+  "pendientes_path": "%USERPROFILE%\\Documents\\Notas\\Lia\\Pendientes.md",
+  "notas_dir": "%USERPROFILE%\\Documents\\Notas\\Lia",
   "tts_rate": 175,
   "clap_threshold_multiplier": 3.0,
   "clap_window": 2.5,

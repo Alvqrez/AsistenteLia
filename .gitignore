@@ -20,17 +20,34 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual Environments
 venv/
 ENV/
 env/
+.venv/
+.env
 
-# IDE
+# Testing
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.hypothesis/
+
+# IDEs
 .vscode/
 .idea/
+.vscode-profile/
 *.swp
 *.swo
 *~
 .DS_Store
+*.sublime-workspace
+*.sublime-project
 
 # Node
 node_modules/
@@ -38,16 +55,30 @@ npm-debug.log
 yarn-error.log
 package-lock.json
 
+# Logs
+*.log
+.logs/
+
 # Proyecto específico
+data/lia.log
 data/*.json
+data/*.bak
 *.spec
-.pytest_cache/
-.coverage
+
+# Build & Distribution
+*.exe
+*.dll
+*.so
+*.dylib
 
 # Archivos temporales
 *.tmp
 *.bak
-.env
+*.cache
+.~*
 
-# Build & Distribution
-*.exe
+# OS
+Thumbs.db
+.Spotlight-V100
+.Trashes
+ehthumbs.db

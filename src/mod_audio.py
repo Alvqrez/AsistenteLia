@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import sys
+import threading
 import time
 from collections import deque
 
@@ -49,13 +50,17 @@ BLOCK_SIZE    = int(SAMPLE_RATE * BLOCK_MS / 1000)
 # Defaults conservadores usados SOLO si no existe perfil calibrado
 # Ajustados para 48 kHz (más sensibles que 44.1 kHz)
 _DEFAULTS = {
-    "clap_threshold":    0.12,    # antes 0.15 — más permisivo
-    "min_clap_rms":      0.015,   # antes 0.020 — más sensible
-    "crest_factor_min":  3.5,     # antes 4.0 — captura aplausos suaves
+    "clap_threshold":    0.12,
+    "min_clap_rms":      0.015,
+    "crest_factor_min":  3.5,
     "crest_factor_max":  28.0,
-    "min_high_freq":     0.15,    # antes 0.18 — menos restrictivo
-    "max_peak_duration": 0.12,    # antes 0.10 — 48kHz requiere más tiempo
-    "voz_low_thr":       0.18,    # antes 0.20
+    "min_high_freq":     0.15,
+    # min_peak_duration: filtra golpes muy cortos (teclado ~10-15ms, clic ~5ms).
+    # Los aplausos duran ≥30ms. Este es el discriminador más efectivo cuando el
+    # teclado está cerca del micrófono.
+    "min_peak_duration": 0.018,
+    "max_peak_duration": 0.12,
+    "voz_low_thr":       0.18,
     "voz_centroid_thr":  3500.0,
     "noise_floor":       0.05,
 }
@@ -155,16 +160,17 @@ class ClapDetector:
         perfil = cargar_perfil()
         self._aplicar_perfil(perfil)
 
-        self.clap_window    = 3.0    # antes 2.5s — ventana más amplia
-        self.sequence_gap   = 1.2    # antes 0.9s — más tolerancia entre aplausos
+        self.clap_window    = 3.0
+        self.sequence_gap   = 1.2
         self.clap_cooldown  = 0.16
         self.clap_events    = deque(maxlen=20)
         self.last_clap_time = 0.0
 
-        self.calibrando   = False
-        self.lia_hablando = False
-        self._active      = True
-        self._voz_hasta   = 0.0   # supresión temporal por voz detectada
+        self.calibrando      = False
+        self.lia_hablando    = False
+        self._active         = True
+        self._voz_hasta      = 0.0
+        self._hablando_timer = None
 
     def _aplicar_perfil(self, perfil: dict):
         """Aplica los valores del perfil a los atributos de detección."""
@@ -173,6 +179,8 @@ class ClapDetector:
         self.crest_factor_min  = perfil["crest_factor_min"]
         self.crest_factor_max  = perfil["crest_factor_max"]
         self.min_high_freq     = perfil["min_high_freq"]
+        self.min_peak_duration = perfil.get("min_peak_duration",
+                                            _DEFAULTS["min_peak_duration"])
         self.max_peak_duration = perfil["max_peak_duration"]
         self.voz_low_thr       = perfil["voz_low_thr"]
         self.voz_centroid_thr  = perfil["voz_centroid_thr"]
@@ -187,18 +195,44 @@ class ClapDetector:
     # ── Control externo ────────────────────────────────────────────────────────
 
     def set_lia_hablando(self, estado: bool):
-        self.lia_hablando = estado
+        if estado:
+            # Lia empieza a hablar → supresión inmediata
+            self.lia_hablando = True
+            if hasattr(self, "_hablando_timer") and self._hablando_timer:
+                self._hablando_timer.cancel()
+                self._hablando_timer = None
+        else:
+            # Lia termina de hablar → esperar 600ms para absorber reverberación
+            # de la sala antes de reactivar el detector. Sin este delay, el eco
+            # de la voz de Lia en el micrófono genera falsos aplausos.
+            if hasattr(self, "_hablando_timer") and self._hablando_timer:
+                self._hablando_timer.cancel()
+            t = threading.Timer(0.6, self._limpiar_lia_hablando)
+            t.daemon = True
+            t.start()
+            self._hablando_timer = t
+
+    def _limpiar_lia_hablando(self):
+        self.lia_hablando = False
+        self._hablando_timer = None
 
     def set_active(self, estado: bool):
         self._active = estado
 
-    def notificar_voz_detectada(self, duracion_supresion: float = 1.5):
+    def notificar_voz_detectada(self, duracion_supresion: float = 2.0):
         """
-        Llamar desde el reconocedor de voz al capturar audio.
-        Suprime el detector por `duracion_supresion` segundos para evitar
-        que plosivos del habla ("Lia, abre") se cuenten como aplausos.
+        Llamar desde el reconocedor al capturar audio (ANTES del reconocimiento).
+
+        Dos acciones:
+        1. Suprime nuevos aplausos durante `duracion_supresion` segundos.
+        2. Descarta el buffer de aplausos pendientes: cualquier "aplauso"
+           detectado justo antes de que el reconocedor devolviera audio era
+           casi seguro un plosivo de voz (ej. la "L" de "Lia"), no un aplauso
+           real. Descartarlos previene secuencias falsas.
         """
         self._voz_hasta = time.time() + duracion_supresion
+        # Limpiar cola de eventos de aplauso previos al habla.
+        self.clap_events.clear()
 
     # ── Clasificación ──────────────────────────────────────────────────────────
 
@@ -266,7 +300,11 @@ class ClapDetector:
             return False
 
         # ── B6: Duración del pico ─────────────────────────────────────────────
+        # Mínimo: rechaza golpes muy cortos (teclado ~10ms, clic ~5ms).
+        # Máximo: rechaza sonidos sostenidos (voz larga, fricativos).
         dur = az.peak_duration(audio)
+        if dur < self.min_peak_duration:
+            return False
         if dur > self.max_peak_duration:
             return False
 

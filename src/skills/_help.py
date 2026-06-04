@@ -1,3 +1,27 @@
+#!/usr/bin/env python3
+"""
+_help.py — Texto del menú de comandos y utilidades para abrirlo/cerrarlo.
+
+Helper compartido por la skill de control de voz. Extraído del antiguo
+LiaAssistant para que la generación del `lia_comandos.txt` no viva en el núcleo.
+"""
+
+import logging
+import os
+import platform
+import subprocess
+import sys
+import tempfile
+
+logger = logging.getLogger("lia.help")
+
+_SRC_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_ROOT_DIR = sys._MEIPASS if getattr(sys, "frozen", False) else os.path.dirname(_SRC_DIR)
+_DATA_DIR = os.path.join(_ROOT_DIR, "data")
+os.makedirs(_DATA_DIR, exist_ok=True)
+COMANDOS_TXT_PATH = os.path.join(_DATA_DIR, "lia_comandos.txt")
+
+MENU_TEXTO = """\
 +==============================================================+
 |                   ASISTENTE LIA  v5.0.0                      |
 +==============================================================+
@@ -56,3 +80,37 @@
 |    "dashboard" / "configuracion" / "resumen" / "comandos"    |
 |    "gracias" / "recalibra"                                   |
 +==============================================================+
+"""
+
+
+def generar_txt_comandos() -> None:
+    """Escribe el menú a disco de forma atómica."""
+    try:
+        dir_ = os.path.dirname(COMANDOS_TXT_PATH) or "."
+        fd, tmp = tempfile.mkstemp(dir=dir_, suffix=".tmp")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(MENU_TEXTO)
+        os.replace(tmp, COMANDOS_TXT_PATH)
+    except Exception as ex:
+        logger.warning("No se pudo crear lia_comandos.txt: %s", ex)
+
+
+def abrir_txt_comandos() -> None:
+    try:
+        if not os.path.exists(COMANDOS_TXT_PATH):
+            generar_txt_comandos()
+        if platform.system() == "Windows":
+            subprocess.Popen(["notepad.exe", COMANDOS_TXT_PATH])
+        else:
+            subprocess.Popen(["xdg-open", COMANDOS_TXT_PATH])
+    except Exception as ex:
+        logger.warning("Error al abrir comandos: %s", ex)
+
+
+def cerrar_txt_comandos() -> None:
+    try:
+        if platform.system() == "Windows":
+            subprocess.run(["taskkill", "/f", "/im", "notepad.exe"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass

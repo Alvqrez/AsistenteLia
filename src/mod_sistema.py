@@ -2,6 +2,7 @@
 
 import logging
 import os
+import shutil
 import subprocess
 import platform
 import threading
@@ -21,30 +22,33 @@ except ImportError:
 class SystemTools:
 
     APP_MAP: dict = {
-        "vscode":                    "code",
-        "visual studio code":        "code",
-        "visual studio":             "code",
-        "spotify":                   r"%APPDATA%\Spotify\Spotify.exe",
+        # VS Code: instalación de usuario (la más común)
+        "vscode":                    r"%LOCALAPPDATA%\Programs\Microsoft VS Code\Code.exe",
+        "visual studio code":        r"%LOCALAPPDATA%\Programs\Microsoft VS Code\Code.exe",
+        "visual studio":             r"%LOCALAPPDATA%\Programs\Microsoft VS Code\Code.exe",
+        # Spotify: Store / WindowsApps
+        "spotify":                   r"%LOCALAPPDATA%\Microsoft\WindowsApps\Spotify.exe",
         "discord":                   r"%LOCALAPPDATA%\Discord\Update.exe",
         "whatsapp":                  r"%LOCALAPPDATA%\WhatsApp\WhatsApp.exe",
         "telegram":                  r"%APPDATA%\Telegram Desktop\Telegram.exe",
         "slack":                     r"%LOCALAPPDATA%\slack\slack.exe",
-        "teams":                     r"%LOCALAPPDATA%\Microsoft\Teams\current\Teams.exe",
+        "teams":                     r"%LOCALAPPDATA%\Microsoft\WindowsApps\ms-teams.exe",
         "zoom":                      r"%APPDATA%\Zoom\bin\Zoom.exe",
         "chrome":                    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
         "firefox":                   r"C:\Program Files\Mozilla Firefox\firefox.exe",
         "edge":                      r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-        "word":                      r"C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE",
-        "excel":                     r"C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE",
-        "powerpoint":                r"C:\Program Files\Microsoft Office\root\Office16\POWERPNT.EXE",
-        "outlook":                   r"C:\Program Files\Microsoft Office\root\Office16\OUTLOOK.EXE",
+        # Office: ruta x86 (instalación estándar en este equipo)
+        "word":                      r"C:\Program Files (x86)\Microsoft Office\root\Office16\WINWORD.EXE",
+        "excel":                     r"C:\Program Files (x86)\Microsoft Office\root\Office16\EXCEL.EXE",
+        "powerpoint":                r"C:\Program Files (x86)\Microsoft Office\root\Office16\POWERPNT.EXE",
+        "outlook":                   r"C:\Program Files (x86)\Microsoft Office\root\Office16\OUTLOOK.EXE",
         "obsidian":                  r"%LOCALAPPDATA%\Obsidian\Obsidian.exe",
         "notion":                    r"%LOCALAPPDATA%\Programs\Notion\Notion.exe",
         "notepad":                   "notepad.exe",
         "bloc de notas":             "notepad.exe",
         "explorador":                "explorer.exe",
         "calculadora":               "calc.exe",
-        "terminal":                  "wt.exe",
+        "terminal":                  r"%LOCALAPPDATA%\Microsoft\WindowsApps\wt.exe",
         "cmd":                       "cmd.exe",
         "paint":                     "mspaint.exe",
         "taskmgr":                   "taskmgr.exe",
@@ -57,6 +61,39 @@ class SystemTools:
         "photoshop":                 r"C:\Program Files\Adobe\Adobe Photoshop 2024\Photoshop.exe",
         "figma":                     r"%LOCALAPPDATA%\Figma\Figma.exe",
         "postman":                   r"%LOCALAPPDATA%\Postman\Postman.exe",
+    }
+
+    # Rutas alternativas para apps con ubicaciones variables.
+    # Se prueban en orden cuando la ruta principal del APP_MAP no existe.
+    _FALLBACK_PATHS: dict = {
+        "vscode": [
+            r"C:\Program Files\Microsoft VS Code\Code.exe",
+        ],
+        "chrome": [
+            r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        ],
+        "edge": [
+            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        ],
+        "word": [
+            r"C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE",
+        ],
+        "excel": [
+            r"C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE",
+        ],
+        "powerpoint": [
+            r"C:\Program Files\Microsoft Office\root\Office16\POWERPNT.EXE",
+        ],
+        "outlook": [
+            r"C:\Program Files\Microsoft Office\root\Office16\OUTLOOK.EXE",
+        ],
+        "spotify": [
+            r"%APPDATA%\Spotify\Spotify.exe",
+        ],
+        "terminal": [
+            r"%LOCALAPPDATA%\Microsoft\WindowsApps\wt.exe",
+        ],
     }
 
     # URLs de servicios web. Agrega los que quieras con el mismo formato:
@@ -167,13 +204,32 @@ class SystemTools:
         return "\\" not in ruta and "/" not in ruta
 
     def _resolver_ruta(self, clave: str):
-        raw = self.APP_MAP.get(clave.lower(), "")
+        clave_l = clave.lower()
+        raw = self.APP_MAP.get(clave_l, "")
         if not raw:
             return None
+
+        # URI schemes como ms-settings: se manejan aparte con os.startfile
+        if raw.endswith(":") and not raw.startswith("%") and "\\" not in raw:
+            return raw
+
         ruta = os.path.expandvars(raw)
+
+        # Comando simple (sin ruta) → buscar en PATH con shutil.which
         if self._es_comando_simple(ruta):
+            found = shutil.which(ruta)
+            return found  # None si no está en PATH; cae al Start Menu search
+
+        if os.path.exists(ruta):
             return ruta
-        return ruta if os.path.exists(ruta) else None
+
+        # Probar rutas alternativas
+        for fb in self._FALLBACK_PATHS.get(clave_l, []):
+            fb_exp = os.path.expandvars(fb)
+            if os.path.exists(fb_exp):
+                return fb_exp
+
+        return None
 
     def es_carpeta_conocida(self, nombre: str) -> bool:
         return nombre.lower().strip() in self.CARPETAS_MAP
@@ -204,7 +260,10 @@ class SystemTools:
         ruta = self._resolver_ruta(nombre_limpio)
         if ruta:
             try:
-                if "Update.exe" in ruta and "Discord" in ruta:
+                if ruta.endswith(":") and "\\" not in ruta:
+                    # URI scheme (ms-settings:, etc.)
+                    os.startfile(ruta)
+                elif "Update.exe" in ruta and "Discord" in ruta:
                     subprocess.Popen([ruta, "--processStart", "Discord.exe"])
                 else:
                     subprocess.Popen([ruta])
@@ -274,6 +333,69 @@ class SystemTools:
             logger.error("Error al abrir URL '%s': %s", url, ex)
             if not silent:
                 self.lia.hablar(self.lia.persona.error_generico(f"abrir {nombre}"))
+
+    # Mapa nombre hablado → proceso .exe para cerrar individualmente.
+    _CLOSE_MAP: dict = {
+        "spotify":               "Spotify.exe",
+        "vscode":                "Code.exe",
+        "visual studio":         "Code.exe",
+        "visual studio code":    "Code.exe",
+        "código":                "Code.exe",
+        "codigo":                "Code.exe",
+        "chrome":                "chrome.exe",
+        "firefox":               "firefox.exe",
+        "edge":                  "msedge.exe",
+        "discord":               "Discord.exe",
+        "whatsapp":              "WhatsApp.exe",
+        "telegram":              "Telegram.exe",
+        "slack":                 "slack.exe",
+        "zoom":                  "Zoom.exe",
+        "teams":                 "Teams.exe",
+        "notepad":               "notepad.exe",
+        "bloc de notas":         "notepad.exe",
+        "obs":                   "obs64.exe",
+        "vlc":                   "vlc.exe",
+        "photoshop":             "Photoshop.exe",
+        "figma":                 "Figma.exe",
+        "postman":               "Postman.exe",
+        "steam":                 "steam.exe",
+        "word":                  "WINWORD.EXE",
+        "excel":                 "EXCEL.EXE",
+        "powerpoint":            "POWERPNT.EXE",
+        "outlook":               "OUTLOOK.EXE",
+        "obsidian":              "Obsidian.exe",
+        "notion":                "Notion.exe",
+        "calculadora":           "CalculatorApp.exe",
+        "paint":                 "mspaint.exe",
+        "administrador de tareas": "Taskmgr.exe",
+    }
+
+    def cerrar_app(self, nombre: str):
+        """Cierra una aplicación específica por nombre hablado."""
+        nombre_l = nombre.lower().strip()
+        proc = self._CLOSE_MAP.get(nombre_l)
+
+        if not proc:
+            # Búsqueda parcial en el mapa (p.ej. "el spotify" → "spotify")
+            for clave, exe in self._CLOSE_MAP.items():
+                if clave in nombre_l or nombre_l in clave:
+                    proc = exe
+                    break
+
+        if not proc:
+            # Intento directo: añade .exe si el usuario lo nombró exactamente
+            proc = nombre_l if nombre_l.endswith(".exe") else nombre_l + ".exe"
+
+        result = subprocess.run(
+            ["taskkill", "/f", "/im", proc],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        nombre_display = nombre.strip().title()
+        if result.returncode == 0:
+            self.lia.hablar(f"Cerré {nombre_display}.")
+            self.lia.registrar_actividad(f"Cerró {nombre_display}")
+        else:
+            self.lia.hablar(f"No encontré {nombre_display} abierto.")
 
     def cerrar_todo(self):
         procesos = ["chrome.exe", "msedge.exe", "firefox.exe",

@@ -15,10 +15,20 @@ _SRC_DIR        = os.path.dirname(os.path.abspath(__file__))
 _ROOT_DIR       = os.path.dirname(_SRC_DIR)
 _DATA_DIR       = os.path.join(_ROOT_DIR, "data")
 os.makedirs(_DATA_DIR, exist_ok=True)
-NOTAS_DIR       = os.path.join(os.path.expanduser("~"), "Documents", "Notas")
-PENDIENTES_PATH = os.path.join(NOTAS_DIR, "Pendientes.md")
-HISTORIAL_PATH  = os.path.join(_DATA_DIR, "lia_historial.json")
-MEMORIA_PATH    = os.path.join(_DATA_DIR, "lia_memoria.json")
+_DEFAULT_NOTAS_DIR      = os.path.join(os.path.expanduser("~"), "Documents", "Notas")
+_DEFAULT_PENDIENTES     = os.path.join(_DEFAULT_NOTAS_DIR, "Pendientes.md")
+HISTORIAL_PATH          = os.path.join(_DATA_DIR, "lia_historial.json")
+MEMORIA_PATH            = os.path.join(_DATA_DIR, "lia_memoria.json")
+
+
+def _resolver_pendientes(parent_lia) -> tuple[str, str]:
+    """Lee notas_dir y pendientes_path del config si está disponible."""
+    cfg = getattr(parent_lia, "config", None)
+    if cfg is not None:
+        notas = cfg.get("notas_dir") or _DEFAULT_NOTAS_DIR
+        pend  = cfg.get("pendientes_path") or os.path.join(notas, "Pendientes.md")
+        return notas, pend
+    return _DEFAULT_NOTAS_DIR, _DEFAULT_PENDIENTES
 
 
 class MemoryTools:
@@ -29,7 +39,8 @@ class MemoryTools:
         self._shutdown_flag   = None
         self._pendientes_lock = threading.Lock()  # protege lectura/escritura de Pendientes.md
 
-        os.makedirs(NOTAS_DIR, exist_ok=True)
+        self._notas_dir, self._pendientes_path = _resolver_pendientes(parent_lia)
+        os.makedirs(self._notas_dir, exist_ok=True)
 
         self.historial = self._cargar_json(HISTORIAL_PATH, {"actividades": [], "estadisticas": {}})
         self.memoria   = self._cargar_json(MEMORIA_PATH,   {"notas": {}, "hechos": {}})
@@ -71,11 +82,11 @@ class MemoryTools:
         self._guardar_json(HISTORIAL_PATH, self.historial)
 
     def _asegurar_pendientes(self):
-        os.makedirs(NOTAS_DIR, exist_ok=True)
-        if not os.path.exists(PENDIENTES_PATH):
-            with open(PENDIENTES_PATH, "w", encoding="utf-8") as f:
+        os.makedirs(self._notas_dir, exist_ok=True)
+        if not os.path.exists(self._pendientes_path):
+            with open(self._pendientes_path, "w", encoding="utf-8") as f:
                 f.write("# Pendientes\n\n")
-            logger.info("Archivo de pendientes creado en '%s'.", PENDIENTES_PATH)
+            logger.info("Archivo de pendientes creado en '%s'.", self._pendientes_path)
 
     def _parsear_pendiente(self, linea: str):
         linea = linea.strip().lstrip("\ufeff")
@@ -89,7 +100,7 @@ class MemoryTools:
             return
         try:
             self._asegurar_pendientes()
-            with open(PENDIENTES_PATH, "a", encoding="utf-8") as f:
+            with open(self._pendientes_path, "a", encoding="utf-8") as f:
                 f.write(f"\n- [ ] {texto}\n")
             self.lia.hablar(self.lia.persona.pendiente_agregado(texto))
             self.registrar_actividad("Agregó pendiente")
@@ -98,15 +109,15 @@ class MemoryTools:
             self.lia.hablar(self.lia.persona.error_generico("guardar el pendiente"))
 
     def decir_pendientes(self, limite: int = 5):
-        logger.debug("Leyendo pendientes de '%s'.", PENDIENTES_PATH)
+        logger.debug("Leyendo pendientes de '%s'.", self._pendientes_path)
         try:
             with self._pendientes_lock:
-                if not os.path.exists(PENDIENTES_PATH):
+                if not os.path.exists(self._pendientes_path):
                     self._asegurar_pendientes()
                     self.lia.hablar(f"No encontré su lista, {self.lia.persona.nombre}. Creé un archivo nuevo.")
                     return
                 pendientes = []
-                with open(PENDIENTES_PATH, "r", encoding="utf-8-sig") as f:
+                with open(self._pendientes_path, "r", encoding="utf-8-sig") as f:
                     for linea in f:
                         item = self._parsear_pendiente(linea)
                         if item:
@@ -133,7 +144,7 @@ class MemoryTools:
         try:
             with self._pendientes_lock:
                 self._asegurar_pendientes()
-                with open(PENDIENTES_PATH, "r", encoding="utf-8-sig") as f:
+                with open(self._pendientes_path, "r", encoding="utf-8-sig") as f:
                     lineas = f.readlines()
                 encontrada  = False
                 nombre_real = ""
@@ -149,10 +160,10 @@ class MemoryTools:
                     nuevas.append(linea)
                 if encontrada:
                     # Escritura atómica: protege Pendientes.md de corrupción
-                    tmp = PENDIENTES_PATH + ".tmp"
+                    tmp = self._pendientes_path + ".tmp"
                     with open(tmp, "w", encoding="utf-8") as f:
                         f.writelines(nuevas)
-                    os.replace(tmp, PENDIENTES_PATH)
+                    os.replace(tmp, self._pendientes_path)
             # hablar fuera del lock para no retenerlo durante I/O de TTS
             if encontrada:
                 self.lia.hablar(self.lia.persona.tarea_completada(nombre_real))
