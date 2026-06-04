@@ -104,7 +104,7 @@ class ContextoConversacional:
         if self.proyecto_activo and self.proyecto_activo.get("ruta"):
             ruta = self.proyecto_activo["ruta"]
             try:
-                subprocess.Popen(f'code "{ruta}"', shell=True)
+                subprocess.Popen(["code", ruta])
                 self.lia.hablar(f"Abriendo proyecto {nombre} en VS Code.")
             except Exception:
                 try:

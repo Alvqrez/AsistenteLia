@@ -5,6 +5,7 @@ import os
 import json
 import re
 import datetime
+import tempfile
 import time
 
 logger = logging.getLogger("lia.vida")
@@ -42,9 +43,19 @@ class VidaTools:
         return default
 
     def _guardar_json(self):
+        dir_ = os.path.dirname(VIDA_JSON_PATH) or "."
         try:
-            with open(VIDA_JSON_PATH, "w", encoding="utf-8") as f:
-                json.dump(self.data, f, indent=2, ensure_ascii=False)
+            fd, tmp = tempfile.mkstemp(dir=dir_, suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump(self.data, f, indent=2, ensure_ascii=False)
+                os.replace(tmp, VIDA_JSON_PATH)
+            except Exception:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
         except Exception as ex:
             logger.error("No se pudo guardar lia_vida.json: %s", ex)
 
@@ -86,8 +97,10 @@ class VidaTools:
                         continue
                 nuevas.append(linea)
             if encontrado:
-                with open(ruta, "w", encoding="utf-8") as f:
+                tmp = ruta + ".tmp"
+                with open(tmp, "w", encoding="utf-8") as f:
                     f.writelines(nuevas)
+                os.replace(tmp, ruta)
             return encontrado
         except Exception as ex:
             logger.error("Error al marcar en '%s': %s", ruta, ex)
@@ -109,7 +122,6 @@ class VidaTools:
         self.lia.hablar(f"Tienes {len(metas)} meta{'s' if len(metas) != 1 else ''} pendiente{'s' if len(metas) != 1 else ''}.")
         for meta in metas[:5]:
             self.lia.hablar(meta)
-            time.sleep(0.3)
         if len(metas) > 5:
             self.lia.hablar(f"Y {len(metas) - 5} más.")
         self.lia.registrar_actividad("Leyó metas")
@@ -146,7 +158,6 @@ class VidaTools:
             self.lia.hablar("Pendientes:")
             for h in pendientes[:5]:
                 self.lia.hablar(h)
-                time.sleep(0.25)
         else:
             self.lia.hablar("¡Completaste todos tus hábitos de hoy!")
         self.lia.registrar_actividad("Revisó hábitos")
@@ -204,7 +215,6 @@ class VidaTools:
         self.lia.hablar(f"Tienes {len(proyectos)} proyecto{'s' if len(proyectos) != 1 else ''} activo{'s' if len(proyectos) != 1 else ''}.")
         for p in proyectos[:5]:
             self.lia.hablar(p)
-            time.sleep(0.3)
         self.lia.registrar_actividad("Revisó proyectos")
 
     def agregar_proyecto(self, nombre: str):

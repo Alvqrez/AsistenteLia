@@ -293,14 +293,26 @@ def _calcular_umbrales(silencio: dict, teclado: dict, voz: dict,
 # ── Guardado ──────────────────────────────────────────────────────────────────
 
 def _guardar_perfil(umbrales: dict, raw: dict, output_path: str):
+    import tempfile
     perfil = {
         "version":   "1.0",
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         "umbrales":  umbrales,
         "raw": raw,   # datos crudos para diagnóstico
     }
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(perfil, f, indent=2, ensure_ascii=False)
+    # Escritura atómica: si la calibración se interrumpe, el perfil anterior queda intacto
+    dir_ = os.path.dirname(output_path) or "."
+    fd, tmp = tempfile.mkstemp(dir=dir_, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(perfil, f, indent=2, ensure_ascii=False)
+        os.replace(tmp, output_path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
     print(f"\n  ✓ Perfil guardado en: {output_path}")
 
 

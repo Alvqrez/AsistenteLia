@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 
+import json
+import logging
 import os
+import platform
+import subprocess
 import sys as _sys
 import threading
 import time
@@ -8,6 +12,12 @@ import webbrowser
 import urllib.parse
 
 import speech_recognition as sr
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
 
 from mod_audio         import ClapDetector
 from mod_sistema       import SystemTools
@@ -20,6 +30,12 @@ from mod_personalidad  import Persona
 from mod_productividad import ProductividadTools
 from mod_focus         import FocusTools
 from mod_resumen       import ResumenTools
+from mod_contexto      import ContextoConversacional
+from mod_config        import ConfigManager
+from mod_vida          import VidaTools
+from mod_recordatorios import RecordatoriosTools
+from mod_dashboard     import mostrar_dashboard
+import mod_sonidos
 
 _SRC_DIR          = os.path.dirname(os.path.abspath(__file__))
 _ROOT_DIR         = _sys._MEIPASS if getattr(_sys, "frozen", False) else os.path.dirname(_SRC_DIR)
@@ -180,7 +196,23 @@ class LiaAssistant:
 |    "bloquea" / "apaga la pc" / "cancela apagado"             |
 |  -- Modo Enfoque ------------------------------------------- |
 |    "modo enfoque [N]" / "desbloquea sitios"                  |
+|  -- Recordatorios con fecha --------------------------------- |
+|    "recuerda [X] mañana / el viernes / el 15 de julio"       |
+|    "mis recordatorios" / "recordatorios pendientes"          |
+|    "recordatorio completado [X]"                             |
+|  -- Metas / Hábitos / Proyectos ----------------------------- |
+|    "mis metas" / "agrega meta [texto]" / "meta lista [X]"   |
+|    "mis hábitos" / "agrega hábito [X]" / "hice el hábito X" |
+|    "mis proyectos" / "agrega proyecto [X]"                   |
+|    "resumen personal" / "cómo estoy"                         |
+|  -- Contexto de trabajo ------------------------------------- |
+|    "abre el proyecto [nombre]"  (busca carpeta en disco)     |
+|    "ejecuta" / "ejecutar el proyecto"                        |
+|    "qué estoy haciendo"                                      |
+|    "abre lo último" / "cierra lo último" / "abortar"         |
 |  -- Misc --------------------------------------------------- |
+|    "dashboard" / "panel"                                     |
+|    "configuracion" / "ajustes"                               |
 |    "resumen" / "qué hice hoy"                                |
 |    "comandos" / "ayuda"                                      |
 |    "gracias"                                                 |
@@ -190,12 +222,14 @@ class LiaAssistant:
 
     def __init__(self):
         self.is_active       = True
+        self._active_lock    = threading.Lock()   # protege secuencias check+set de is_active
         self._shutdown_flag  = threading.Event()
         self._gui_window     = None
 
         # Acción pendiente: Lia espera un dato extra del usuario
         # {"tipo": str, "params": dict, "pregunta": str}
         self._pending_action = None
+        self._pending_lock   = threading.Lock()  # protege _pending_action
 
         self.persona = Persona(nombre="Leonardo")
 
@@ -226,6 +260,7 @@ class LiaAssistant:
         # non_speaking_duration: silencio mínimo antes/después de la frase.
         self.recognizer.non_speaking_duration = 0.7
 
+        self.config        = ConfigManager(_ROOT_DIR)
         self.sistema       = ExtendedSystemTools(self)
         self.memoria       = MemoryTools(self)
         self.internet      = InternetTools(self)
@@ -233,6 +268,11 @@ class LiaAssistant:
         self.productividad = ProductividadTools(self)
         self.focus         = FocusTools(self)
         self.resumen       = ResumenTools(self)
+        # contexto antes que vida (VidaTools.resumen_vida() accede a self.lia.contexto)
+        self.contexto      = ContextoConversacional(self)
+        self.recordatorios = RecordatoriosTools(self)
+        self.recordatorios._shutdown = self._shutdown_flag
+        self.vida          = VidaTools(self)
 
         self.memoria._shutdown_flag = self._shutdown_flag
 
@@ -240,6 +280,7 @@ class LiaAssistant:
 
         self._generar_txt_comandos()
         self.hablar(self.persona.saludo_inicio())
+        mod_sonidos.sonido_inicio()
 
     # ── Interfaz base ─────────────────────────────────────────────────────────
 
@@ -248,8 +289,8 @@ class LiaAssistant:
         if self._gui_window:
             try:
                 self._gui_window.signal_log.emit(f"🗣 {texto}")
-            except Exception:
-                pass
+            except Exception as ex:
+                logging.getLogger("lia.gui").debug("signal_log.emit falló: %s", ex)
         self.voz.decir(texto)
 
     def registrar_actividad(self, actividad: str):
@@ -257,21 +298,21 @@ class LiaAssistant:
         if self._gui_window:
             try:
                 self._gui_window.signal_log.emit(f"✓ {actividad}")
-            except Exception:
-                pass
-
-    def mostrar_menu(self):
-        pass
+            except Exception as ex:
+                logging.getLogger("lia.gui").debug("signal_log.emit falló: %s", ex)
 
     def _generar_txt_comandos(self):
+        import tempfile
         try:
-            with open(COMANDOS_TXT_PATH, "w", encoding="utf-8") as f:
+            dir_ = os.path.dirname(COMANDOS_TXT_PATH) or "."
+            fd, tmp = tempfile.mkstemp(dir=dir_, suffix=".tmp")
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
                 f.write(self.MENU_TEXTO)
+            os.replace(tmp, COMANDOS_TXT_PATH)
         except Exception as ex:
             print(f"No se pudo crear lia_comandos.txt: {ex}")
 
     def abrir_comandos_txt(self):
-        import subprocess, platform
         try:
             if not os.path.exists(COMANDOS_TXT_PATH):
                 self._generar_txt_comandos()
@@ -285,7 +326,6 @@ class LiaAssistant:
             print(f"Error al abrir comandos: {ex}")
 
     def cerrar_comandos_txt(self):
-        import subprocess, platform
         try:
             if platform.system() == "Windows":
                 subprocess.run(["taskkill", "/f", "/im", "notepad.exe"],
@@ -296,8 +336,6 @@ class LiaAssistant:
     # ── Aplausos ──────────────────────────────────────────────────────────────
 
     def _handle_clap_sequence(self, count: int):
-        import json
-        # CORRECCIÓN: ruta era "../lia_modos.json" — incorrecto si se renombró la carpeta
         modos_path = os.path.join(_DATA_DIR, "lia_modos.json")
         modos = []
         try:
@@ -307,15 +345,22 @@ class LiaAssistant:
         except Exception:
             pass
 
-        if not self.is_active and count >= 3:
-            self.is_active = True
+        with self._active_lock:
+            if not self.is_active and count >= 3:
+                self.is_active = True
+                reactivar = True
+            else:
+                reactivar = False
+            activo = self.is_active
+
+        if reactivar:
             self.detector.set_active(True)
             self.hablar(self.persona.reactivacion())
             if self._gui_window:
                 self._gui_window.signal_status.emit("activa")
             return
 
-        if not self.is_active:
+        if not activo:
             return
 
         modo = next((m for m in modos if m.get("aplausos") == count), None)
@@ -332,13 +377,17 @@ class LiaAssistant:
 
     def _pedir(self, tipo: str, params: dict, pregunta: str):
         """Guarda una acción incompleta y hace la pregunta al usuario."""
-        self._pending_action = {"tipo": tipo, "params": params}
+        with self._pending_lock:
+            self._pending_action = {"tipo": tipo, "params": params}
         self.hablar(pregunta)
 
     def _resolver_pendiente(self, respuesta: str):
         """Completa la acción pendiente con la respuesta del usuario."""
-        accion = self._pending_action
-        self._pending_action = None
+        with self._pending_lock:
+            accion = self._pending_action
+            self._pending_action = None
+        if accion is None:
+            return  # ya fue procesado por otro hilo (race condition prevenida)
 
         resp_l = respuesta.lower().strip()
 
@@ -396,6 +445,9 @@ class LiaAssistant:
         elif tipo == "abrir_app":
             self.sistema.open_application(respuesta.strip())
 
+        elif tipo == "abrir_proyecto":
+            self.contexto.abrir_proyecto(respuesta.strip())
+
         else:
             self.hablar(f"No supe qué hacer con '{respuesta}'.")
 
@@ -429,6 +481,19 @@ class LiaAssistant:
             self.abrir_comandos_txt()
             return
 
+        # ── Dashboard ─────────────────────────────────────────────────────────
+        if any(w in cmd_l for w in ("dashboard", "panel", "muéstrame el panel",
+                                     "abre el panel", "muestra panel")):
+            mostrar_dashboard(lia=self)
+            self.hablar("Panel abierto.")
+            return
+
+        # ── Configuración ─────────────────────────────────────────────────────
+        if any(w in cmd_l for w in ("configuracion", "configuración",
+                                     "ajustes", "ver ajustes", "mi configuracion")):
+            self.config.asistente_configuracion(self)
+            return
+
         # ── Rutina de inicio ──────────────────────────────────────────────────
         if _coincide(cmd_l, _SINONIMOS_INICIO):
             self.internet.rutina_inicio()
@@ -447,7 +512,8 @@ class LiaAssistant:
 
         # ── Pausa / reactivación ──────────────────────────────────────────────
         if _coincide(cmd_l, _SINONIMOS_PAUSA):
-            self.is_active = False
+            with self._active_lock:
+                self.is_active = False
             self.detector.set_active(False)
             self.hablar(self.persona.pausa())
             if self._gui_window:
@@ -456,8 +522,11 @@ class LiaAssistant:
 
         if any(w in cmd_l for w in ("ya regresé", "ya regrese", "ya volví", "ya volvi",
                                      "estoy de vuelta", "aquí estoy", "aqui estoy")):
-            if not self.is_active:
-                self.is_active = True
+            with self._active_lock:
+                era_inactivo = not self.is_active
+                if era_inactivo:
+                    self.is_active = True
+            if era_inactivo:
                 self.detector.set_active(True)
                 self.hablar(self.persona.reactivacion())
                 if self._gui_window:
@@ -469,10 +538,37 @@ class LiaAssistant:
         if any(w in cmd_l for w in ("apagate", "apagar lia", "ciérrate", "cierrate",
                                      "hasta luego", "hasta mañana", "hasta manana",
                                      "chao lia", "adiós lia", "adios lia")):
+            mod_sonidos.sonido_apagado()
             self.hablar(self.persona.apagado())
             self._shutdown_flag.set()
             if self._gui_window:
                 self._gui_window.signal_status.emit("apagada")
+            return
+
+        # ── Contexto conversacional ───────────────────────────────────────────
+        if any(w in cmd_l for w in ("ejecuta", "ejecutar el proyecto",
+                                     "corre el proyecto", "inicia el proyecto")):
+            self.contexto.ejecutar_ultimo()
+            return
+
+        if any(w in cmd_l for w in ("qué estoy haciendo", "que estoy haciendo",
+                                     "en qué proyecto estoy", "en que proyecto estoy",
+                                     "qué tengo abierto", "que tengo abierto")):
+            self.contexto.que_estoy_haciendo()
+            return
+
+        if any(w in cmd_l for w in ("abre lo último", "abre lo ultimo",
+                                     "abre lo de antes", "vuelve a abrir")):
+            self.contexto.abrir_ultimo()
+            return
+
+        if any(w in cmd_l for w in ("cierra lo último", "cierra lo ultimo",
+                                     "cierra eso")):
+            self.contexto.cerrar_ultimo()
+            return
+
+        if any(w in cmd_l for w in ("abortar", "aborta todo", "cierra todo lo que abriste")):
+            self.contexto.abortar()
             return
 
         # ── Modos ─────────────────────────────────────────────────────────────
@@ -486,6 +582,20 @@ class LiaAssistant:
 
         if _coincide(cmd_l, _SINONIMOS_JUEGO) and "abre" not in cmd_l:
             self.sistema.modo_juego()
+            return
+
+        # ── Abrir proyecto en VS Code (contexto) ─────────────────────────────
+        if any(w in cmd_l for w in ("abre el proyecto", "abrir proyecto",
+                                     "proyecto activo")):
+            for kw in ("abre el proyecto ", "abrir proyecto ", "proyecto activo "):
+                if kw in cmd_l:
+                    nombre = cmd_l.split(kw, 1)[-1].strip()
+                    if nombre:
+                        self.contexto.abrir_proyecto(nombre)
+                    else:
+                        self._pedir("abrir_proyecto", {}, "¿Cuál proyecto quieres abrir?")
+                    return
+            self._pedir("abrir_proyecto", {}, "¿Cuál proyecto quieres abrir?")
             return
 
         # ── Archivos ──────────────────────────────────────────────────────────
@@ -556,64 +666,16 @@ class LiaAssistant:
                             abrir_en_web = True
                             break
 
-                    # Mapa de sitios conocidos (nombre hablado → URL exacta)
-                    _sitios_web = {
-                        "youtube":       "https://www.youtube.com",
-                        "google":        "https://www.google.com",
-                        "gmail":         "https://mail.google.com",
-                        "drive":         "https://drive.google.com",
-                        "google drive":  "https://drive.google.com",
-                        "calendar":      "https://calendar.google.com",
-                        "google calendar": "https://calendar.google.com",
-                        "whatsapp":      "https://web.whatsapp.com",
-                        "chatgpt":       "https://chat.openai.com",
-                        "claude":        "https://claude.ai",
-                        "github":        "https://github.com",
-                        "notion":        "https://www.notion.so",
-                        "figma":         "https://www.figma.com",
-                        "netflix":       "https://www.netflix.com",
-                        "spotify":       "https://open.spotify.com",
-                        "twitter":       "https://twitter.com",
-                        "instagram":     "https://www.instagram.com",
-                        "facebook":      "https://www.facebook.com",
-                        "linkedin":      "https://www.linkedin.com",
-                        "reddit":        "https://www.reddit.com",
-                        "stackoverflow": "https://stackoverflow.com",
-                        "canva":         "https://www.canva.com",
-                        "amazon":        "https://www.amazon.com",
-                        "mercado libre": "https://www.mercadolibre.com.mx",
-                        "mercadolibre":  "https://www.mercadolibre.com.mx",
-                        "tiktok":        "https://www.tiktok.com",
-                        "twitch":        "https://www.twitch.tv",
-                        "pinterest":     "https://www.pinterest.com",
-                        "wikipedia":     "https://es.wikipedia.org",
-                        "maps":          "https://maps.google.com",
-                        "google maps":   "https://maps.google.com",
-                        "traductor":     "https://translate.google.com",
-                        "translate":     "https://translate.google.com",
-                        "vercel":        "https://vercel.com",
-                        "supabase":      "https://supabase.com",
-                        "railway":       "https://railway.app",
-                        "heroku":        "https://heroku.com",
-                        "trello":        "https://trello.com",
-                        "asana":         "https://asana.com",
-                        "jira":          "https://www.atlassian.com/software/jira",
-                        "discord":       "https://discord.com/app",
-                        "slack":         "https://slack.com",
-                        "zoom":          "https://zoom.us",
-                        "teams":         "https://teams.microsoft.com",
-                        "outlook":       "https://outlook.live.com",
-                        "office":        "https://www.office.com",
-                        "onedrive":      "https://onedrive.live.com",
-                    }
-
                     if not app:
                         self._pedir("abrir_app", {}, "¿Qué quieres que abra?")
                         return
 
-                    # Caso A: sitio en lista conocida → URL exacta
-                    if app in _sitios_web:
-                        webbrowser.open(_sitios_web[app])
+                    # Caso A: sitio en WEB_MAP → URL exacta.
+                    # Se usa self.sistema.WEB_MAP como única fuente de verdad
+                    # (evita duplicar el mapa de URLs en este archivo).
+                    web_map = self.sistema.WEB_MAP
+                    if app in web_map:
+                        webbrowser.open(web_map[app])
                         self.hablar(f"Abriendo {app}.")
                         self.registrar_actividad(f"Abrió web {app}")
                         return
@@ -692,11 +754,31 @@ class LiaAssistant:
             return
 
         # ── Recordatorio ─────────────────────────────────────────────────────
-        # "recuerda [X] en [N] minutos" / "en [N] minutos recuérdame [X]"
+        # "recuerda [X] en [N] minutos" → recordatorio rápido (mod_memoria)
         if ("recuerda" in cmd_l or "recuérdame" in cmd_l or "recuerdame" in cmd_l) \
-                and (" en " in cmd_l or " minutos" in cmd_l):
+                and "minuto" in cmd_l:
             self._cmd_recordatorio(cmd_l)
             return
+
+        # "recuerda [X] mañana / el viernes / el 15 de julio" → fecha calendario
+        if "recuerda" in cmd_l or "recuérdame" in cmd_l or "recuerdame" in cmd_l:
+            self._cmd_recordatorio_fecha(cmd_l)
+            return
+
+        # Listar y completar recordatorios con fecha
+        if any(w in cmd_l for w in ("mis recordatorios", "lista de recordatorios",
+                                     "qué recordatorios tengo", "que recordatorios tengo",
+                                     "recordatorios pendientes")):
+            self.recordatorios.listar()
+            return
+
+        for kw in ("recordatorio completado ", "marcar recordatorio ",
+                   "completar recordatorio "):
+            if kw in cmd_l:
+                texto = cmd_l.split(kw, 1)[-1].strip()
+                if texto:
+                    self.recordatorios.completar(texto)
+                return
 
         # ── Clima ─────────────────────────────────────────────────────────────
         if _coincide(cmd_l, _SINONIMOS_CLIMA):
@@ -754,21 +836,17 @@ class LiaAssistant:
                 or "calibrar microfono" in cmd_l or "recalibrar" in cmd_l
                 or ("calibra" in cmd_l and "aplausos" in cmd_l)):
             self.hablar("Voy a calibrar el detector de aplausos. Abre la consola y sigue las instrucciones.")
-            import threading as _th
-            import subprocess as _sp
-            import sys as _sys
-            import os as _os
-            _script = _os.path.join(
-                _os.path.dirname(_os.path.abspath(__file__)), "calibrar_perfil.py"
+            _script = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "calibrar_perfil.py"
             )
             def _run_calibrar():
                 try:
-                    _sp.run([_sys.executable, _script], check=True)
+                    subprocess.run([_sys.executable, _script], check=True)
                     self.detector.recargar_perfil()
                     self.hablar("Calibración completada. Umbrales personalizados cargados.")
-                except Exception as _ex:
+                except Exception:
                     self.hablar("Hubo un error durante la calibración. Revisa la consola.")
-            _th.Thread(target=_run_calibrar, daemon=True).start()
+            threading.Thread(target=_run_calibrar, daemon=True).start()
             return
 
         # ── Sistema ───────────────────────────────────────────────────────────
@@ -881,6 +959,12 @@ class LiaAssistant:
             return
 
         # ── Productividad ─────────────────────────────────────────────────────
+        # "resumen personal" va antes de "resumen" para evitar colisión
+        if any(w in cmd_l for w in ("resumen personal", "resumen de vida",
+                                     "cómo estoy", "como estoy")):
+            self.vida.resumen_vida()
+            return
+
         if any(w in cmd_l for w in ("resumen", "qué hice hoy", "que hice hoy",
                                      "mi resumen", "resumen del día", "resumen del dia")):
             self.resumen.resumen_del_dia()
@@ -919,7 +1003,76 @@ class LiaAssistant:
             self.focus.desactivar()
             return
 
+        # ── Vida — Metas ──────────────────────────────────────────────────────
+        if any(w in cmd_l for w in ("mis metas", "lista de metas", "qué metas tengo",
+                                     "que metas tengo", "cuáles son mis metas")):
+            self.vida.leer_metas()
+            return
+
+        for kw in ("agrega meta ", "nueva meta ", "añade meta "):
+            if kw in cmd_l:
+                texto = cmd_l.split(kw, 1)[-1].strip()
+                if texto:
+                    self.vida.agregar_meta(texto)
+                else:
+                    self.hablar("¿Cuál es la meta que quieres agregar?")
+                return
+
+        for kw in ("meta lista ", "completé la meta ", "complete la meta ",
+                   "meta completada "):
+            if kw in cmd_l:
+                texto = cmd_l.split(kw, 1)[-1].strip()
+                self.vida.completar_meta(texto)
+                return
+
+        # ── Vida — Hábitos ────────────────────────────────────────────────────
+        if any(w in cmd_l for w in ("mis hábitos", "mis habitos", "revisar hábitos",
+                                     "revisar habitos", "cómo van mis hábitos",
+                                     "como van mis habitos")):
+            self.vida.revisar_habitos()
+            return
+
+        for kw in ("agrega hábito ", "agrega habito ", "nuevo hábito ", "nuevo habito "):
+            if kw in cmd_l:
+                nombre = cmd_l.split(kw, 1)[-1].strip()
+                if nombre:
+                    self.vida.agregar_habito(nombre)
+                else:
+                    self.hablar("¿Cómo se llama el hábito?")
+                return
+
+        for kw in ("hice el hábito ", "hice el habito ", "marqué el hábito ",
+                   "marque el habito ", "cumplí el hábito ", "cumpli el habito "):
+            if kw in cmd_l:
+                nombre = cmd_l.split(kw, 1)[-1].strip()
+                if nombre:
+                    self.vida.marcar_habito(nombre)
+                return
+
+        # ── Vida — Proyectos personales ────────────────────────────────────────
+        if any(w in cmd_l for w in ("mis proyectos", "estado de proyectos",
+                                     "qué proyectos tengo", "que proyectos tengo")):
+            self.vida.estado_proyectos()
+            return
+
+        for kw in ("agrega proyecto ", "nuevo proyecto "):
+            if kw in cmd_l:
+                nombre = cmd_l.split(kw, 1)[-1].strip()
+                if nombre:
+                    self.vida.agregar_proyecto(nombre)
+                else:
+                    self.hablar("¿Cómo se llama el proyecto?")
+                return
+
+        for kw in ("completé el proyecto ", "complete el proyecto ",
+                   "proyecto terminado "):
+            if kw in cmd_l:
+                texto = cmd_l.split(kw, 1)[-1].strip()
+                self.vida.completar_proyecto(texto)
+                return
+
         # ── Fallback: informar ────────────────────────────────────────────────
+        mod_sonidos.sonido_error()
         self.hablar(self.persona.no_entendi())
 
     # ── Helpers de comandos complejos ─────────────────────────────────────────
@@ -1088,20 +1241,59 @@ class LiaAssistant:
         # ── Caso 4: sin destino → Google ─────────────────────────────────────
         self.internet.buscar_google(resto)
 
-    def _cmd_buscar_carpeta(self, cmd_l: str):
-        """Mantener compatibilidad con llamadas internas (pending actions)."""
-        self._cmd_buscar(cmd_l)
+    def _cmd_recordatorio_fecha(self, cmd_l: str):
+        """Parsea 'recuerda [X] mañana/el viernes/el 15 de julio'."""
+        import re as _re
+        texto = (cmd_l.replace("recuérdame", "")
+                      .replace("recuerdame", "")
+                      .replace("recuerda", "")
+                      .strip())
+
+        # Palabras que marcan el inicio de la fecha
+        _MARCAS_FECHA = [
+            "pasado mañana", "pasado manana",
+            "mañana", "manana", "hoy",
+            " el lunes", " el martes", " el miércoles", " el miercoles",
+            " el jueves", " el viernes", " el sábado", " el sabado", " el domingo",
+            " lunes", " martes", " miércoles", " miercoles",
+            " jueves", " viernes", " sábado", " sabado", " domingo",
+        ]
+        mensaje    = texto
+        texto_fecha = texto
+
+        for marca in _MARCAS_FECHA:
+            idx = texto.find(marca)
+            if idx > 0:
+                mensaje    = texto[:idx].strip()
+                texto_fecha = texto[idx:].strip()
+                break
+        else:
+            # Intentar "N de mes"
+            m = _re.search(r"\d{1,2}\s+de\s+\w+", texto)
+            if m:
+                idx = m.start()
+                mensaje    = texto[:idx].strip()
+                texto_fecha = texto[idx:].strip()
+
+        if not mensaje.strip():
+            self.hablar("No entendí qué quieres que recuerde. Di: recuerda [cosa] mañana.")
+            return
+
+        self.recordatorios.agregar(mensaje, texto_fecha)
 
     def _cmd_recordatorio(self, cmd_l: str):
         """Parsea 'recuerda [X] en [N] minutos' y variaciones."""
         try:
             if " en " in cmd_l:
-                partes  = cmd_l.split(" en ", 1)
+                # rsplit toma el ÚLTIMO "en" → evita confundir "en la clínica" con el tiempo
+                partes  = cmd_l.rsplit(" en ", 1)
                 mensaje = (partes[0].replace("recuerda", "")
                                     .replace("recuérdame", "")
                                     .replace("recuerdame", "").strip())
                 resto   = partes[1]
                 mins    = float("".join(c for c in resto if c.isdigit() or c == ".") or "5")
+                if mins <= 0:
+                    mins = 5.0
                 self.memoria.recordar_en(mensaje, mins)
             else:
                 self.hablar("No entendí el recordatorio. Di: recuerda [cosa] en [N] minutos.")
@@ -1157,17 +1349,22 @@ class LiaAssistant:
                     if "lia" not in cmd and "lía" not in cmd:
                         continue
 
+                    mod_sonidos.sonido_escuchando()
                     limpio = (cmd.replace("lía,", "").replace("lia,", "")
                                  .replace("lía", "").replace("lia", "")
                                  .strip().strip(",. "))
                     if limpio:
+                        self.contexto.registrar_comando(limpio)
                         self._parse_command(limpio)
 
                 except sr.UnknownValueError:
                     pass
                 except sr.RequestError as ex:
                     print(f"Error reconocimiento: {ex}")
-                except Exception:
+                except Exception as ex:
+                    logging.getLogger("lia.listen").warning(
+                        "Error inesperado en listen_loop: %s", ex, exc_info=True
+                    )
                     time.sleep(0.5)
 
     def run(self):

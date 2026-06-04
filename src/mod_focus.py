@@ -64,14 +64,23 @@ class FocusTools:
 
     def _restaurar(self):
         ruta = self._hosts_path()
+        tmp  = ruta + ".lia.tmp"
         try:
             with open(ruta, "r", encoding="utf-8") as f:
                 lineas = f.readlines()
             nuevas = [ln for ln in lineas if _MARCA not in ln]
-            with open(ruta, "w", encoding="utf-8") as f:
+            # Escritura atómica: si el proceso muere entre open("w") y writelines()
+            # el archivo hosts quedaría vacío. Con replace() el original se preserva
+            # hasta que la escritura completa esté garantizada.
+            with open(tmp, "w", encoding="utf-8") as f:
                 f.writelines(nuevas)
+            os.replace(tmp, ruta)
         except Exception as ex:
             logger.error("Error restaurando hosts: %s", ex)
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
 
     # ----- API publica -----
     @property

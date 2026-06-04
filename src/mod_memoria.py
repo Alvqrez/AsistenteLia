@@ -5,6 +5,7 @@ import os
 import json
 import re
 import datetime
+import tempfile
 import threading
 import time
 
@@ -23,9 +24,10 @@ MEMORIA_PATH    = os.path.join(_DATA_DIR, "lia_memoria.json")
 class MemoryTools:
 
     def __init__(self, parent_lia):
-        self.lia             = parent_lia
-        self.pomodoro_thread = None
-        self._shutdown_flag  = None
+        self.lia              = parent_lia
+        self.pomodoro_thread  = None
+        self._shutdown_flag   = None
+        self._pendientes_lock = threading.Lock()  # protege lectura/escritura de Pendientes.md
 
         os.makedirs(NOTAS_DIR, exist_ok=True)
 
@@ -42,9 +44,21 @@ class MemoryTools:
         return default
 
     def _guardar_json(self, ruta: str, data: dict):
+        # Escritura atómica: escribe en temporal y hace replace.
+        # Evita dejar el archivo corrupto si el proceso se interrumpe.
+        dir_ = os.path.dirname(ruta) or "."
         try:
-            with open(ruta, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
+            fd, tmp = tempfile.mkstemp(dir=dir_, suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+                os.replace(tmp, ruta)
+            except Exception:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
         except Exception as ex:
             logger.error("No se pudo guardar '%s': %s", ruta, ex)
 
@@ -86,16 +100,17 @@ class MemoryTools:
     def decir_pendientes(self, limite: int = 5):
         logger.debug("Leyendo pendientes de '%s'.", PENDIENTES_PATH)
         try:
-            if not os.path.exists(PENDIENTES_PATH):
-                self._asegurar_pendientes()
-                self.lia.hablar(f"No encontré su lista, {self.lia.persona.nombre}. Creé un archivo nuevo.")
-                return
-            pendientes = []
-            with open(PENDIENTES_PATH, "r", encoding="utf-8-sig") as f:
-                for linea in f:
-                    item = self._parsear_pendiente(linea)
-                    if item:
-                        pendientes.append(item)
+            with self._pendientes_lock:
+                if not os.path.exists(PENDIENTES_PATH):
+                    self._asegurar_pendientes()
+                    self.lia.hablar(f"No encontré su lista, {self.lia.persona.nombre}. Creé un archivo nuevo.")
+                    return
+                pendientes = []
+                with open(PENDIENTES_PATH, "r", encoding="utf-8-sig") as f:
+                    for linea in f:
+                        item = self._parsear_pendiente(linea)
+                        if item:
+                            pendientes.append(item)
             logger.debug("Pendientes encontrados: %d", len(pendientes))
             if not pendientes:
                 self.lia.hablar(self.lia.persona.sin_pendientes())
@@ -104,7 +119,6 @@ class MemoryTools:
             self.lia.hablar(f"Tiene {total} pendiente{'s' if total != 1 else ''}, {self.lia.persona.nombre}.")
             for item in pendientes[:limite]:
                 self.lia.hablar(item)
-                time.sleep(0.25)
             if total > limite:
                 self.lia.hablar(f"Y {total - limite} tarea{'s' if total - limite != 1 else ''} más.")
         except Exception as ex:
@@ -117,24 +131,30 @@ class MemoryTools:
             self.lia.hablar(f"Dígame qué tarea completó, {self.lia.persona.nombre}.")
             return
         try:
-            self._asegurar_pendientes()
-            with open(PENDIENTES_PATH, "r", encoding="utf-8-sig") as f:
-                lineas = f.readlines()
-            encontrada  = False
-            nombre_real = ""
-            nuevas      = []
-            for linea in lineas:
-                if not encontrada:
-                    item = self._parsear_pendiente(linea)
-                    if item and (texto_tarea in item.lower() or item.lower() in texto_tarea):
-                        nuevas.append(linea.replace("- [ ]", "- [x]").replace("-[ ]", "-[x]"))
-                        encontrada  = True
-                        nombre_real = item
-                        continue
-                nuevas.append(linea)
+            with self._pendientes_lock:
+                self._asegurar_pendientes()
+                with open(PENDIENTES_PATH, "r", encoding="utf-8-sig") as f:
+                    lineas = f.readlines()
+                encontrada  = False
+                nombre_real = ""
+                nuevas      = []
+                for linea in lineas:
+                    if not encontrada:
+                        item = self._parsear_pendiente(linea)
+                        if item and (texto_tarea in item.lower() or item.lower() in texto_tarea):
+                            nuevas.append(linea.replace("- [ ]", "- [x]").replace("-[ ]", "-[x]"))
+                            encontrada  = True
+                            nombre_real = item
+                            continue
+                    nuevas.append(linea)
+                if encontrada:
+                    # Escritura atómica: protege Pendientes.md de corrupción
+                    tmp = PENDIENTES_PATH + ".tmp"
+                    with open(tmp, "w", encoding="utf-8") as f:
+                        f.writelines(nuevas)
+                    os.replace(tmp, PENDIENTES_PATH)
+            # hablar fuera del lock para no retenerlo durante I/O de TTS
             if encontrada:
-                with open(PENDIENTES_PATH, "w", encoding="utf-8") as f:
-                    f.writelines(nuevas)
                 self.lia.hablar(self.lia.persona.tarea_completada(nombre_real))
                 self.registrar_actividad("Completó tarea")
             else:
@@ -173,7 +193,6 @@ class MemoryTools:
         self.lia.hablar(f"Tiene {len(notas)} nota{'s' if len(notas) != 1 else ''}.")
         for clave in list(notas.keys())[:10]:
             self.lia.hablar(clave)
-            time.sleep(0.2)
 
     def eliminar_nota(self, clave: str):
         clave = clave.lower().strip()
@@ -192,18 +211,21 @@ class MemoryTools:
 
         def _run():
             self.lia.hablar(self.lia.persona.pomodoro_inicio(minutos))
-            for _ in range(minutos * 60):
-                if self._shutdown_flag and self._shutdown_flag.is_set():
+            flag = self._shutdown_flag
+            if flag:
+                # wait() retorna True si se activó el flag (shutdown), False si expiró el timeout
+                shutdown = flag.wait(timeout=minutos * 60)
+                if shutdown:
                     return
-                time.sleep(1)
-            if not (self._shutdown_flag and self._shutdown_flag.is_set()):
-                self.lia.hablar(self.lia.persona.pomodoro_fin())
-                try:
-                    self.lia.sistema.notificar("Lia – Pomodoro",
-                                               f"{minutos} minutos completados. Descanse 5.")
-                except Exception as ex:
-                    logger.warning("Error al notificar pomodoro: %s", ex)
-                self.registrar_actividad("Pomodoro completado")
+            else:
+                time.sleep(minutos * 60)
+            self.lia.hablar(self.lia.persona.pomodoro_fin())
+            try:
+                self.lia.sistema.notificar("Lia – Pomodoro",
+                                           f"{minutos} minutos completados. Descanse 5.")
+            except Exception as ex:
+                logger.warning("Error al notificar pomodoro: %s", ex)
+            self.registrar_actividad("Pomodoro completado")
 
         self.pomodoro_thread = threading.Thread(target=_run, daemon=True)
         self.pomodoro_thread.start()
@@ -215,17 +237,19 @@ class MemoryTools:
             return
 
         def _run():
-            for _ in range(int(minutos * 60)):
-                if self._shutdown_flag and self._shutdown_flag.is_set():
+            flag = self._shutdown_flag
+            if flag:
+                shutdown = flag.wait(timeout=minutos * 60)
+                if shutdown:
                     return
-                time.sleep(1)
-            if not (self._shutdown_flag and self._shutdown_flag.is_set()):
-                self.lia.hablar(self.lia.persona.recordatorio_disparado(mensaje))
-                try:
-                    self.lia.sistema.notificar("Lia – Recordatorio", mensaje)
-                except Exception as ex:
-                    logger.warning("Error al notificar recordatorio: %s", ex)
-                self.registrar_actividad(f"Recordatorio disparado: {mensaje}")
+            else:
+                time.sleep(minutos * 60)
+            self.lia.hablar(self.lia.persona.recordatorio_disparado(mensaje))
+            try:
+                self.lia.sistema.notificar("Lia – Recordatorio", mensaje)
+            except Exception as ex:
+                logger.warning("Error al notificar recordatorio: %s", ex)
+            self.registrar_actividad(f"Recordatorio disparado: {mensaje}")
 
         threading.Thread(target=_run, daemon=True).start()
         self.lia.hablar(self.lia.persona.recordatorio_creado(mensaje, minutos))

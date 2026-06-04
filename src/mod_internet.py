@@ -44,10 +44,7 @@ class InternetTools:
             return "sin datos de clima"
 
     def rutina_inicio(self):
-        try:
-            self.lia.hablar(f"Iniciando rutina, {self.lia.persona.nombre}. Veamos cómo va el día.")
-        except Exception:
-            pass
+        self.lia.hablar(f"Iniciando rutina, {self.lia.persona.nombre}. Veamos cómo va el día.")
 
         try:
             ahora = datetime.datetime.now()

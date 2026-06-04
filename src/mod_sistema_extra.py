@@ -106,10 +106,10 @@ class FileOpsTools:
             self.lia.registrar_actividad(f"Creó archivo: {nombre_limpio}")
             # Abrir en VS Code si está disponible
             try:
-                subprocess.Popen(f'code "{ruta_archivo}"', shell=True,
+                subprocess.Popen(["code", ruta_archivo],
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            except Exception:
-                pass
+            except Exception as ex:
+                logger.debug("VS Code no disponible para abrir '%s': %s", ruta_archivo, ex)
         except Exception as ex:
             logger.error("Error al crear archivo '%s': %s", ruta_archivo, ex)
             self.lia.hablar("No pude crear el archivo.")
@@ -138,8 +138,8 @@ class FileOpsTools:
                     subprocess.Popen(["open", ruta_nueva])
                 else:
                     subprocess.Popen(["xdg-open", ruta_nueva])
-            except Exception:
-                pass
+            except Exception as ex:
+                logger.debug("No se pudo abrir el explorador en '%s': %s", ruta_nueva, ex)
         except Exception as ex:
             logger.error("Error al crear carpeta '%s': %s", ruta_nueva, ex)
             self.lia.hablar("No pude crear la carpeta.")

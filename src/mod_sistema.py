@@ -4,6 +4,7 @@ import logging
 import os
 import subprocess
 import platform
+import threading
 import webbrowser
 import time
 
@@ -204,11 +205,9 @@ class SystemTools:
         if ruta:
             try:
                 if "Update.exe" in ruta and "Discord" in ruta:
-                    subprocess.Popen(f'"{ruta}" --processStart Discord.exe', shell=True)
-                elif self._es_comando_simple(ruta):
-                    subprocess.Popen(ruta, shell=True)
+                    subprocess.Popen([ruta, "--processStart", "Discord.exe"])
                 else:
-                    subprocess.Popen(f'"{ruta}"', shell=True)
+                    subprocess.Popen([ruta])
                 if not silent:
                     self.lia.hablar(self.lia.persona.abriendo_app(nombre))
                 self.lia.registrar_actividad(f"Abrió {nombre}")
@@ -219,7 +218,9 @@ class SystemTools:
                 logger.error("Error al lanzar '%s': %s", ruta, ex)
 
         try:
-            subprocess.Popen(nombre_limpio, shell=True,
+            # Sin shell=True: evita command injection con input del usuario.
+            # Se usa lista de argumentos para que el OS no interprete metacaracteres.
+            subprocess.Popen([nombre_limpio],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             if not silent:
                 self.lia.hablar(self.lia.persona.abriendo_app(nombre))
@@ -228,7 +229,7 @@ class SystemTools:
                 self.lia.contexto.registrar_apertura_app(nombre_limpio)
             return
         except Exception as ex:
-            logger.warning("Fallo shell directo para '%s': %s", nombre_limpio, ex)
+            logger.warning("Fallo ejecución directa para '%s': %s", nombre_limpio, ex)
 
         start_menus = [
             os.path.expandvars(r"%APPDATA%\Microsoft\Windows\Start Menu\Programs"),
@@ -316,13 +317,12 @@ class SystemTools:
     def buscar_en_carpeta(self, termino: str, nombre_carpeta: str):
         """
         Busca archivos/carpetas que contengan `termino` dentro de `nombre_carpeta`.
-        Si la carpeta no está en CARPETAS_MAP, intenta encontrarla en los lugares
-        comunes del sistema (Documentos, Escritorio, Descargas, ~).
+        La búsqueda se ejecuta en un hilo daemon para no bloquear el listener de voz
+        (os.walk sobre ~/Documents puede tardar varios segundos).
         """
-        clave = nombre_carpeta.lower().strip()
+        clave     = nombre_carpeta.lower().strip()
         ruta_base = self.CARPETAS_MAP.get(clave)
 
-        # Si no está en el mapa, buscar la carpeta por nombre en ubicaciones comunes
         if not ruta_base or not os.path.exists(ruta_base):
             ruta_base = self._buscar_carpeta_por_nombre(nombre_carpeta)
 
@@ -333,43 +333,47 @@ class SystemTools:
             )
             return
 
-        termino_lower = termino.lower()
-        encontrados   = []
-
-        for root, dirs, files in os.walk(ruta_base):
-            dirs[:] = [d for d in dirs if not d.startswith(".")]
-            for archivo in files:
-                if termino_lower in archivo.lower():
-                    encontrados.append(os.path.join(root, archivo))
-            for carpeta in dirs:
-                if termino_lower in carpeta.lower():
-                    encontrados.append(os.path.join(root, carpeta))
-            if len(encontrados) >= 8:
-                break
-
-        if not encontrados:
-            self.lia.hablar(f"No encontré '{termino}' en {nombre_carpeta}.")
-            return
-
-        if len(encontrados) == 1:
-            ruta = encontrados[0]
-            self.lia.hablar(f"Encontré: {os.path.basename(ruta)}. Abriendo.")
-            if hasattr(self.lia, "contexto"):
-                self.lia.contexto.registrar_apertura_archivo(ruta)
+        def _buscar():
+            termino_lower = termino.lower()
+            encontrados   = []
             try:
-                os.startfile(ruta)
+                for root, dirs, files in os.walk(ruta_base):
+                    dirs[:] = [d for d in dirs if not d.startswith(".")]
+                    for archivo in files:
+                        if termino_lower in archivo.lower():
+                            encontrados.append(os.path.join(root, archivo))
+                    for carpeta in dirs:
+                        if termino_lower in carpeta.lower():
+                            encontrados.append(os.path.join(root, carpeta))
+                    if len(encontrados) >= 8:
+                        break
             except Exception as ex:
-                logger.error("Error al abrir resultado de búsqueda: %s", ex)
-        else:
-            self.lia.hablar(f"Encontré {len(encontrados)} resultados en {nombre_carpeta}:")
-            for r in encontrados[:3]:
-                self.lia.hablar(os.path.basename(r))
-                time.sleep(0.2)
-            if len(encontrados) > 3:
-                self.lia.hablar(f"Y {len(encontrados) - 3} más.")
-            if hasattr(self.lia, "contexto"):
-                self.lia.contexto.registrar_apertura_archivo(encontrados[0])
-        self.lia.registrar_actividad(f"Buscó '{termino}' en {nombre_carpeta}")
+                logger.error("Error durante búsqueda en '%s': %s", ruta_base, ex)
+
+            if not encontrados:
+                self.lia.hablar(f"No encontré '{termino}' en {nombre_carpeta}.")
+                return
+
+            if len(encontrados) == 1:
+                ruta = encontrados[0]
+                self.lia.hablar(f"Encontré: {os.path.basename(ruta)}. Abriendo.")
+                if hasattr(self.lia, "contexto"):
+                    self.lia.contexto.registrar_apertura_archivo(ruta)
+                try:
+                    os.startfile(ruta)
+                except Exception as ex:
+                    logger.error("Error al abrir resultado de búsqueda: %s", ex)
+            else:
+                self.lia.hablar(f"Encontré {len(encontrados)} resultados en {nombre_carpeta}:")
+                for r in encontrados[:3]:
+                    self.lia.hablar(os.path.basename(r))
+                if len(encontrados) > 3:
+                    self.lia.hablar(f"Y {len(encontrados) - 3} más.")
+                if hasattr(self.lia, "contexto"):
+                    self.lia.contexto.registrar_apertura_archivo(encontrados[0])
+            self.lia.registrar_actividad(f"Buscó '{termino}' en {nombre_carpeta}")
+
+        threading.Thread(target=_buscar, daemon=True).start()
 
     def _buscar_carpeta_por_nombre(self, nombre: str) -> str | None:
         """
@@ -391,44 +395,56 @@ class SystemTools:
     def modo_estudio(self):
         if hasattr(self.lia, "contexto"):
             self.lia.contexto.limpiar_ultimo_modo()
-        self.lia.hablar(self.lia.persona.modo_estudio())   # solo anuncia el MODO
-        self.open_url("https://chat.openai.com", "ChatGPT", silent=True)
-        time.sleep(0.4)
-        self.open_url("https://web.whatsapp.com", "WhatsApp", silent=True)
-        self.lia.registrar_actividad("Modo Estudio")
+        self.lia.hablar(self.lia.persona.modo_estudio())
+        # Las apps se abren en hilo daemon para no bloquear el listener ni el detector de aplausos.
+        # Los sleeps internos escalonan los lanzamientos sin afectar la UI de voz.
+        def _run():
+            self.open_url("https://chat.openai.com", "ChatGPT", silent=True)
+            time.sleep(0.4)
+            self.open_url("https://web.whatsapp.com", "WhatsApp", silent=True)
+            self.lia.registrar_actividad("Modo Estudio")
+        threading.Thread(target=_run, daemon=True).start()
 
     def modo_programacion(self):
         if hasattr(self.lia, "contexto"):
             self.lia.contexto.limpiar_ultimo_modo()
-        self.lia.hablar(self.lia.persona.modo_codigo())    # solo anuncia el MODO
-        self.open_application("vscode", silent=True)
-        time.sleep(0.4)
-        self.open_url("https://github.com", "GitHub", silent=True)
-        time.sleep(0.4)
-        self.open_application("spotify", silent=True)
-        self.lia.registrar_actividad("Modo Programación")
+        self.lia.hablar(self.lia.persona.modo_codigo())
+        def _run():
+            self.open_application("vscode", silent=True)
+            time.sleep(0.4)
+            self.open_url("https://github.com", "GitHub", silent=True)
+            time.sleep(0.4)
+            self.open_application("spotify", silent=True)
+            self.lia.registrar_actividad("Modo Programación")
+        threading.Thread(target=_run, daemon=True).start()
 
     def modo_juego(self):
         if hasattr(self.lia, "contexto"):
             self.lia.contexto.limpiar_ultimo_modo()
-        self.lia.hablar(self.lia.persona.modo_juego())     # solo anuncia el MODO
-        self.open_application("discord", silent=True)
-        time.sleep(0.5)
-        self.abrir_desde_descargas("TimerResolution", silent=True)
-        self.lia.registrar_actividad("Modo Juego")
+        self.lia.hablar(self.lia.persona.modo_juego())
+        def _run():
+            self.open_application("discord", silent=True)
+            time.sleep(0.5)
+            self.abrir_desde_descargas("TimerResolution", silent=True)
+            self.lia.registrar_actividad("Modo Juego")
+        threading.Thread(target=_run, daemon=True).start()
 
     def obtener_info_sistema(self):
         if not _PSUTIL:
             self.lia.hablar("psutil no está instalado.")
             return
-        try:
-            cpu = psutil.cpu_percent(interval=1)
-            ram = psutil.virtual_memory()
-            self.lia.hablar(self.lia.persona.cpu_ram(cpu, ram.percent))
-            self.lia.registrar_actividad("Consultó info del sistema")
-        except Exception as ex:
-            logger.error("Error al leer sistema: %s", ex)
-            self.lia.hablar(self.lia.persona.error_generico("leer el sistema"))
+        # cpu_percent(interval=1) bloquea 1 segundo — se ejecuta en hilo daemon
+        # para no bloquear el listener de voz.
+        def _run():
+            try:
+                cpu = psutil.cpu_percent(interval=1)
+                ram = psutil.virtual_memory()
+                self.lia.hablar(self.lia.persona.cpu_ram(cpu, ram.percent))
+                self.lia.registrar_actividad("Consultó info del sistema")
+            except Exception as ex:
+                logger.error("Error al leer sistema: %s", ex)
+                self.lia.hablar(self.lia.persona.error_generico("leer el sistema"))
+        threading.Thread(target=_run, daemon=True).start()
 
     def obtener_uso_disco(self):
         if not _PSUTIL:
@@ -462,7 +478,6 @@ class SystemTools:
             for p in procs:
                 mem = p.info.get("memory_percent") or 0
                 self.lia.hablar(f"{p.info['name']}: {mem:.1f} por ciento")
-                time.sleep(0.2)
             self.lia.registrar_actividad("Consultó procesos")
         except Exception as ex:
             logger.error("Error al leer procesos: %s", ex)
@@ -496,20 +511,24 @@ class SystemTools:
 
     def notificar(self, titulo: str, mensaje: str):
         try:
-            titulo  = titulo.replace("'", "''")
-            mensaje = mensaje.replace("'", "''")
+            # Los datos se pasan por variables de entorno, no interpolados en el script,
+            # para evitar cualquier inyección de comandos PowerShell.
             script = (
-                f"Add-Type -AssemblyName System.Windows.Forms;"
-                f"$n = New-Object System.Windows.Forms.NotifyIcon;"
-                f"$n.Icon = [System.Drawing.SystemIcons]::Information;"
-                f"$n.Visible = $true;"
-                f"$n.ShowBalloonTip(5000, '{titulo}', '{mensaje}', "
-                f"[System.Windows.Forms.ToolTipIcon]::Info);"
-                f"Start-Sleep -Seconds 6; $n.Dispose()"
+                "Add-Type -AssemblyName System.Windows.Forms;"
+                "$n = New-Object System.Windows.Forms.NotifyIcon;"
+                "$n.Icon = [System.Drawing.SystemIcons]::Information;"
+                "$n.Visible = $true;"
+                "$n.ShowBalloonTip(5000, $env:LIA_NOTIF_TITULO, $env:LIA_NOTIF_MENSAJE, "
+                "[System.Windows.Forms.ToolTipIcon]::Info);"
+                "Start-Sleep -Seconds 6; $n.Dispose()"
             )
+            env = os.environ.copy()
+            env["LIA_NOTIF_TITULO"] = str(titulo)
+            env["LIA_NOTIF_MENSAJE"] = str(mensaje)
             subprocess.Popen(
                 ["powershell", "-WindowStyle", "Hidden", "-Command", script],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                env=env,
             )
         except Exception as ex:
             logger.warning("Error al mostrar notificación: %s", ex)

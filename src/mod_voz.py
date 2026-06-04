@@ -67,9 +67,10 @@ class VozEngine:
         self._volume = volume
         self._queue  = queue.Queue()
 
-        self._hablando   = False
-        self._silencioso = False
-        self._lock       = threading.Lock()
+        self._hablando        = False
+        self._silencioso      = False
+        self._lock            = threading.Lock()
+        self._pyttsx3_engine  = None  # singleton: se crea una vez y se reutiliza
 
         self._on_start = on_speak_start
         self._on_end   = on_speak_end
@@ -136,23 +137,25 @@ class VozEngine:
         # Intento 3: PowerShell MediaPlayer (sólo Windows)
         if platform.system() == "Windows":
             try:
-                import subprocess, urllib.request
-                # Convertir ruta a URI correcta
-                uri = filepath.replace("\\", "/")
-                if not uri.startswith("/"):
-                    uri = "/" + uri
+                import subprocess
+                # Ruta del archivo se pasa por variable de entorno para evitar
+                # cualquier problema con caracteres especiales en la ruta.
                 script = (
                     "Add-Type -AssemblyName presentationCore;"
                     "$mp = New-Object System.Windows.Media.MediaPlayer;"
-                    f"$mp.Open([uri]::new('file://{uri}'));"
+                    "$mp.Open([uri]::new($env:LIA_AUDIO_URI));"
                     "$mp.Play();"
-                    "Start-Sleep -Seconds 30;"
+                    "Start-Sleep -Seconds 15;"
                     "$mp.Stop()"
                 )
+                uri = "file:///" + filepath.replace("\\", "/").lstrip("/")
+                env = os.environ.copy()
+                env["LIA_AUDIO_URI"] = uri
                 subprocess.run(
                     ["powershell", "-WindowStyle", "Hidden", "-Command", script],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                    timeout=35,
+                    timeout=20,
+                    env=env,
                 )
                 return
             except Exception as ex:
@@ -236,35 +239,42 @@ class VozEngine:
             pass
         try:
             import pyttsx3
-            engine = pyttsx3.init("sapi5")
-            engine.setProperty("rate", 175)
-            # Intentar encontrar voz en español
-            for v in engine.getProperty("voices"):
-                nombre = (v.name or "").lower()
-                if any(s in nombre for s in ("sabina", "helena", "laura", "mexico", "spanish", "espanol")):
-                    engine.setProperty("voice", v.id)
-                    break
-            engine.say(texto)
-            engine.runAndWait()
-            engine.stop()
-            del engine
+            # Singleton: el engine se crea una sola vez y se reutiliza.
+            # Crear/destruir instancias de pyttsx3 repetidamente puede causar
+            # fugas de objetos COM en Windows.
+            if self._pyttsx3_engine is None:
+                engine = pyttsx3.init("sapi5")
+                engine.setProperty("rate", 175)
+                for v in engine.getProperty("voices"):
+                    nombre = (v.name or "").lower()
+                    if any(s in nombre for s in ("sabina", "helena", "laura", "mexico", "spanish", "espanol")):
+                        engine.setProperty("voice", v.id)
+                        break
+                self._pyttsx3_engine = engine
+            self._pyttsx3_engine.say(texto)
+            self._pyttsx3_engine.runAndWait()
         except Exception as ex:
             logger.error("Fallback pyttsx3 falló: %s", ex)
+            self._pyttsx3_engine = None  # reset para que el siguiente intento recree el engine
             self._fallback_powershell(texto)
 
     def _fallback_powershell(self, texto: str):
         try:
             import subprocess
-            t = texto.replace("'", "''")
+            # El texto se pasa por variable de entorno para evitar inyección
+            # de expresiones PowerShell contenidas en el texto del usuario.
             script = (
                 "Add-Type -AssemblyName System.Speech;"
                 "$s = New-Object System.Speech.Synthesis.SpeechSynthesizer;"
-                f"$s.Rate = 1; $s.Speak('{t}')"
+                "$s.Rate = 1; $s.Speak($env:LIA_TTS_TEXT)"
             )
+            env = os.environ.copy()
+            env["LIA_TTS_TEXT"] = texto
             subprocess.run(
                 ["powershell", "-WindowStyle", "Hidden", "-Command", script],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 timeout=30,
+                env=env,
             )
         except Exception:
             pass

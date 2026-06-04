@@ -27,12 +27,6 @@ _ROOT_DIR     = os.path.dirname(_SRC_DIR)
 _DATA_DIR     = os.path.join(_ROOT_DIR, "data")
 PROFILE_PATH  = os.path.join(_DATA_DIR, "lia_audio_profile.json")
 
-# ── Paths ──────────────────────────────────────────────────────────────────────
-_SRC_DIR      = os.path.dirname(os.path.abspath(__file__))
-_ROOT_DIR     = os.path.dirname(_SRC_DIR)
-_DATA_DIR     = os.path.join(_ROOT_DIR, "data")
-PROFILE_PATH  = os.path.join(_DATA_DIR, "lia_audio_profile.json")
-
 # Auto-detectar configuración del micrófono por defecto
 try:
     _default_device = sd.default.device
@@ -208,22 +202,28 @@ class ClapDetector:
 
     # ── Clasificación ──────────────────────────────────────────────────────────
 
-    def _es_voz(self, audio: np.ndarray) -> bool:
-        """
-        Usa los umbrales de voz del perfil en vez de condiciones hardcodeadas.
-        Un sonido es "voz" si su contenido de altas frecuencias es bajo
-        relativo a lo que se midió en la calibración.
-        """
-        az    = self.analyzer
-        bands = az.spectral_bands(audio)
+    def _analizar_espectro(self, audio: np.ndarray):
+        """Calcula la FFT una sola vez y devuelve (bands_dict, centroid).
+        Evita calcular rfft varias veces sobre el mismo bloque de audio."""
+        freqs    = np.fft.rfftfreq(len(audio), d=1.0 / self.sample_rate)
+        spectrum = np.abs(np.fft.rfft(audio))
+        total    = np.sum(spectrum) + 1e-12
+        bands = {
+            "sub_bass": float(np.sum(spectrum[freqs < 150])                          / total),
+            "bass":     float(np.sum(spectrum[(freqs >= 150)  & (freqs < 400)])      / total),
+            "low_mid":  float(np.sum(spectrum[(freqs >= 400)  & (freqs < 1500)])     / total),
+            "high_mid": float(np.sum(spectrum[(freqs >= 1500) & (freqs < 3000)])     / total),
+            "high":     float(np.sum(spectrum[freqs >= 3000])                        / total),
+        }
+        centroid = float(np.sum(freqs * spectrum) / total)
+        return bands, centroid
+
+    def _es_voz(self, bands: dict, centroid: float) -> bool:
+        """Clasifica el sonido como voz/plosivo usando datos espectrales pre-calculados."""
         low_e = bands["sub_bass"] + bands["bass"] + bands["low_mid"]
         hf    = bands["high"]
-        cent  = az.spectral_centroid(audio)
-
-        # Si tiene mucha energía baja Y centroide bajo → voz/plosivo
-        if low_e > 0.45 and cent < self.voz_centroid_thr:
+        if low_e > 0.45 and centroid < self.voz_centroid_thr:
             return True
-        # Si sus altas frecuencias son bajas relativo al umbral del perfil
         if hf < self.voz_low_thr and low_e > 0.35:
             return True
         return False
@@ -248,8 +248,11 @@ class ClapDetector:
         if rms < self.min_clap_rms:
             return False
 
+        # FFT calculada una sola vez para B3 y B5 (evita 2–3 rfft por callback)
+        bands, centroid = self._analizar_espectro(audio)
+
         # ── B3: Filtro de voz/plosivos (umbrales del perfil) ─────────────────
-        if self._es_voz(audio):
+        if self._es_voz(bands, centroid):
             return False
 
         # ── B4: Crest factor ──────────────────────────────────────────────────
@@ -257,8 +260,8 @@ class ClapDetector:
         if not (self.crest_factor_min <= cf <= self.crest_factor_max):
             return False
 
-        # ── B5: Contenido de altas frecuencias ───────────────────────────────
-        hf = az.high_freq_ratio(audio)
+        # ── B5: Contenido de altas frecuencias (reutiliza FFT ya calculada) ───
+        hf = bands["high"]
         if hf < self.min_high_freq:
             return False
 

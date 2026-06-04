@@ -39,7 +39,8 @@ class ResumenTools:
                 ts = datetime.datetime.fromisoformat(act["timestamp"])
                 if ts.date() == fecha:
                     out.append(act)
-            except Exception:
+            except Exception as ex:
+                logger.debug("Entrada de historial con timestamp inválido ignorada: %s", ex)
                 continue
         return out
 

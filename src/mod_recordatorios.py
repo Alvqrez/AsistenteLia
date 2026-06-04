@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import tempfile
 import threading
 import time
 import uuid
@@ -117,9 +118,19 @@ class RecordatoriosTools:
         return {"recordatorios": []}
 
     def _guardar(self):
+        dir_ = os.path.dirname(REC_PATH) or "."
         try:
-            with open(REC_PATH, "w", encoding="utf-8") as f:
-                json.dump(self._datos, f, indent=2, ensure_ascii=False)
+            fd, tmp = tempfile.mkstemp(dir=dir_, suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump(self._datos, f, indent=2, ensure_ascii=False)
+                os.replace(tmp, REC_PATH)
+            except Exception:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
         except Exception as ex:
             logger.error("Error guardando recordatorios: %s", ex)
 
@@ -194,7 +205,6 @@ class RecordatoriosTools:
             fecha  = date.fromisoformat(r["fecha"])
             label  = "hoy" if fecha == date.today() else fecha.strftime("%d de %B")
             self.lia.hablar(f"{label}: {r['mensaje']}.")
-            time.sleep(0.2)
 
     def completar(self, texto: str):
         texto_lower = texto.lower().strip()

@@ -2,6 +2,7 @@
 
 import os
 import json
+import tempfile
 
 
 # Valores por defecto razonables
@@ -52,8 +53,11 @@ class ConfigManager:
             try:
                 with open(self._config_path, "r", encoding="utf-8") as f:
                     guardado = json.load(f)
-                # Fusionar: los valores guardados sobreescriben los defaults,
-                # pero se conservan keys nuevas que el usuario no tenga todavía.
+                # Expandir variables de entorno en valores de ruta (%USERPROFILE%, ~, etc.)
+                # para que el config sea portable entre máquinas.
+                for k, v in guardado.items():
+                    if isinstance(v, str) and (os.sep in v or "/" in v or "%" in v or "~" in v):
+                        guardado[k] = os.path.expandvars(os.path.expanduser(v))
                 self._config.update(guardado)
             except Exception as e:
                 print(f"⚠️  No se pudo leer config: {e}. Usando valores por defecto.")
@@ -63,10 +67,20 @@ class ConfigManager:
             print(f"✅ Archivo de configuración creado en:\n   {self._config_path}")
 
     def _guardar(self):
-        """Persiste la configuración actual en el archivo JSON."""
+        """Persiste la configuración actual en el archivo JSON (escritura atómica)."""
+        dir_ = os.path.dirname(self._config_path)
         try:
-            with open(self._config_path, "w", encoding="utf-8") as f:
-                json.dump(self._config, f, indent=2, ensure_ascii=False)
+            fd, tmp = tempfile.mkstemp(dir=dir_, suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump(self._config, f, indent=2, ensure_ascii=False)
+                os.replace(tmp, self._config_path)
+            except Exception:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
         except Exception as e:
             print(f"❌ No se pudo guardar config: {e}")
 

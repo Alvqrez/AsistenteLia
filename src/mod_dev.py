@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 
+import logging
+import platform
+import re
 import subprocess
 import os
-import time
 from typing import Optional
+
+logger = logging.getLogger("lia.dev")
+
+# En Windows npm es un .cmd — se invoca vía cmd /c para evitar shell=True
+_NPM_CMD = (["cmd", "/c", "npm"] if platform.system() == "Windows" else ["npm"])
 
 
 class DevTools:
@@ -51,6 +58,8 @@ class DevTools:
         if res.returncode == 0:
             self.lia.hablar(f"Commit realizado: {mensaje[:50]}.")
             self.lia.registrar_actividad(f"Git commit: {mensaje[:30]}")
+        elif "nothing to commit" in res.stdout or "nothing to commit" in res.stderr:
+            self.lia.hablar("No hay cambios en staging. Primero agrega archivos con git add.")
         else:
             self.lia.hablar("Error al hacer commit.")
             print(f"Git error: {res.stderr}")
@@ -88,7 +97,6 @@ class DevTools:
         for r in ramas[:5]:
             etiqueta = "rama actual:" if r.startswith("*") else ""
             self.lia.hablar(f"{etiqueta} {r.replace('*', '').strip()}")
-            time.sleep(0.25)
         self.lia.registrar_actividad("Git: listó ramas")
 
     def crear_rama(self, nombre: str, ruta: str = "."):
@@ -146,7 +154,6 @@ class DevTools:
         for c in commits:
             msg = c[8:] if len(c) > 8 else c
             self.lia.hablar(msg[:80])
-            time.sleep(0.25)
         self.lia.registrar_actividad("Git: log reciente")
 
     def crear_proyecto_react(self, nombre_carpeta: str, ruta_base: Optional[str] = None):
@@ -160,6 +167,12 @@ class DevTools:
             return
 
         nombre_limpio = nombre_carpeta.strip().replace(" ", "-").lower()
+        # Permitir solo caracteres seguros en el nombre del proyecto.
+        # Evita inyección de comandos si el nombre viene del reconocedor de voz.
+        nombre_limpio = re.sub(r"[^a-z0-9\-_]", "", nombre_limpio)
+        if not nombre_limpio:
+            self.lia.hablar("El nombre del proyecto tiene caracteres inválidos. Usa solo letras, números y guiones.")
+            return
 
         if ruta_base is None:
             posibles = [
@@ -183,14 +196,13 @@ class DevTools:
 
         try:
             proc = subprocess.run(
-                ["npm", "create", "vite@latest", nombre_limpio,
-                 "--", "--template", "react"],
+                _NPM_CMD + ["create", "vite@latest", nombre_limpio,
+                            "--", "--template", "react"],
                 cwd=ruta_base,
                 input="y\n",
                 capture_output=True,
                 text=True,
                 timeout=120,
-                shell=True
             )
 
             if proc.returncode != 0:
@@ -202,21 +214,20 @@ class DevTools:
             self.lia.hablar("Proyecto creado. Instalando dependencias.")
 
             proc2 = subprocess.run(
-                ["npm", "install"],
+                _NPM_CMD + ["install"],
                 cwd=ruta_destino,
                 capture_output=True,
                 text=True,
                 timeout=180,
-                shell=True
             )
 
             if proc2.returncode == 0:
                 self.lia.hablar(f"Listo. Proyecto React '{nombre_limpio}' creado correctamente.")
                 try:
-                    subprocess.Popen(f'code "{ruta_destino}"', shell=True)
+                    subprocess.Popen(["code", ruta_destino])
                     self.lia.hablar("Lo abrí en VS Code.")
-                except Exception:
-                    pass
+                except Exception as ex:
+                    logger.debug("No se pudo abrir VS Code tras crear proyecto: %s", ex)
                 self.lia.registrar_actividad(f"Creó proyecto React: {nombre_limpio}")
             else:
                 self.lia.hablar("Proyecto creado pero falló la instalación de dependencias. Ejecuta npm install manualmente.")
@@ -230,9 +241,6 @@ class DevTools:
             self.lia.hablar("Error al crear el proyecto React.")
             print(f"Error: {ex}")
 
-    def abrir_github(self):
-        self.lia.sistema.open_url("https://github.com", "GitHub")
-
     def abrir_stackoverflow(self):
         self.lia.sistema.open_url("https://stackoverflow.com", "Stack Overflow")
 
@@ -245,7 +253,7 @@ class DevTools:
     def abrir_vscode(self, carpeta: Optional[str] = None):
         if carpeta and os.path.exists(carpeta):
             try:
-                subprocess.Popen(["code", carpeta], shell=True)
+                subprocess.Popen(["code", carpeta])
                 self.lia.hablar(f"Abriendo VS Code con {os.path.basename(carpeta)}.")
                 self.lia.registrar_actividad(f"Abrió VS Code: {carpeta}")
                 return
