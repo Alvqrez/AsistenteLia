@@ -366,6 +366,8 @@ export default function App() {
     { id:4, text:"Leer 20 páginas",                done:false },
     { id:5, text:"Revisar pendientes del trabajo", done:false },
   ]);
+  const [newTodo, setNewTodo] = useState("");
+  const [addingTodo, setAddingTodo] = useState(false);
 
   useEffect(() => { const id=setInterval(()=>setTime(new Date()),1000); return()=>clearInterval(id); }, []);
 
@@ -411,6 +413,14 @@ export default function App() {
 
   const doneCnt = todos.filter(t=>t.done).length;
   const toggleTodo = id => setTodos(ts=>ts.map(t=>t.id===id?{...t,done:!t.done}:t));
+  const addTodo = () => {
+    const text = newTodo.trim();
+    if (!text) return;
+    setTodos(ts => [...ts, { id: Date.now(), text, done: false }]);
+    setNewTodo("");
+    setAddingTodo(false);
+    sendCommand(`cmd:anota ${text}`);
+  };
 
   const row    = { display:"flex", alignItems:"center" };
   const col    = { display:"flex", flexDirection:"column" };
@@ -524,7 +534,9 @@ export default function App() {
 
             {/* Center panel */}
             <div style={{ flex:1, ...col, overflowY:"auto" }}>
-              {/* Orb */}
+
+              {/* ── INICIO ─────────────────────────────────────────────── */}
+              {page === "inicio" && (<>
               <div style={{
                 ...col, alignItems:"center", justifyContent:"center",
                 padding:"22px 0 14px",
@@ -539,18 +551,19 @@ export default function App() {
               </div>
 
               <div style={{ padding:"0 18px 18px" }}>
-                {/* Quick actions */}
                 <div style={{ marginBottom:15 }}>
                   <div style={{ fontSize:9, color:C.muted, letterSpacing:2, fontWeight:600, marginBottom:9 }}>ACCIONES RÁPIDAS</div>
                   <div style={{ display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:8 }}>
                     {quickActions.map(({ Icon, label }) => (
-                      <button key={label} className="qbtn" style={{
-                        padding:"11px 6px",
-                        background:C.bgPanel, border:`1px solid ${C.border}`,
-                        borderRadius:10, cursor:"pointer",
-                        ...col, alignItems:"center", gap:6,
-                        color:C.textDim, fontSize:11, transition:"all .12s",
-                      }}>
+                      <button key={label} className="qbtn"
+                        onClick={() => sendCommand(`action:${label}`)}
+                        style={{
+                          padding:"11px 6px",
+                          background:C.bgPanel, border:`1px solid ${C.border}`,
+                          borderRadius:10, cursor:"pointer",
+                          ...col, alignItems:"center", gap:6,
+                          color:C.textDim, fontSize:11, transition:"all .12s",
+                        }}>
                         <Icon size={17} color={C.cyan} />
                         {label}
                       </button>
@@ -558,7 +571,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Activity */}
                 <div>
                   <div style={{ ...btwn, marginBottom:9 }}>
                     <div style={{ fontSize:9, color:C.muted, letterSpacing:2, fontWeight:600 }}>ACTIVIDAD RECIENTE</div>
@@ -579,6 +591,127 @@ export default function App() {
                   </div>
                 </div>
               </div>
+              </>)}
+
+              {/* ── MODOS ──────────────────────────────────────────────── */}
+              {page === "modos" && (
+                <div style={{ padding:"20px 18px" }}>
+                  <div style={{ fontSize:9, color:C.muted, letterSpacing:2, fontWeight:600, marginBottom:16 }}>MODOS DE TRABAJO</div>
+                  <div style={{ ...col, gap:12 }}>
+                    {modes.map(({ Icon, title, claps, apps, color, bg }) => (
+                      <div key={title} className="mcard" style={{
+                        ...row, gap:14, background:C.bgPanel, border:`1px solid ${C.border}`,
+                        borderRadius:12, padding:"16px", cursor:"pointer", transition:"all .12s",
+                      }}>
+                        <div style={{ width:48, height:48, borderRadius:12, flexShrink:0, background:bg, display:"flex", alignItems:"center", justifyContent:"center", color }}>
+                          <Icon size={22} />
+                        </div>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:14, fontWeight:600, color:C.text, marginBottom:3 }}>{title}</div>
+                          <div style={{ fontSize:11, color:C.muted, marginBottom:5 }}>{claps} aplauso{claps>1?"s":""} para activar</div>
+                          <div style={{ fontSize:11, color:C.textDim }}>{apps.join(" · ")}</div>
+                        </div>
+                        <button onClick={() => sendCommand(`action:${title.replace("Modo ","modo_").toLowerCase()}`)}
+                          style={{ padding:"8px 16px", background:bg, border:`1px solid ${color}44`, borderRadius:8, cursor:"pointer", color, fontSize:12, fontWeight:600 }}>
+                          Activar
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── SISTEMA ────────────────────────────────────────────── */}
+              {page === "sistema" && (
+                <div style={{ padding:"20px 18px" }}>
+                  <div style={{ fontSize:9, color:C.muted, letterSpacing:2, fontWeight:600, marginBottom:16 }}>MÉTRICAS DEL SISTEMA</div>
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:16 }}>
+                    <SystemMetric label="CPU"   initVal={23} color={C.cyan}   />
+                    <SystemMetric label="RAM"   initVal={41} color={C.purple} />
+                    <SystemMetric label="Disco" initVal={68} color={C.warn}   />
+                  </div>
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10 }}>
+                    {[
+                      { label:"Procesos pesados", cmd:"cmd:procesos pesados", Icon:Cpu        },
+                      { label:"Espacio en disco", cmd:"cmd:disco",             Icon:HardDrive  },
+                      { label:"Bloquear pantalla", cmd:"cmd:bloquea",          Icon:Monitor    },
+                      { label:"Estado de red",     cmd:"cmd:hay internet",     Icon:Wifi       },
+                    ].map(({ label, cmd, Icon }) => (
+                      <button key={label} onClick={() => sendCommand(cmd)}
+                        className="qbtn" style={{ ...row, gap:10, padding:"12px 14px", background:C.bgPanel, border:`1px solid ${C.border}`, borderRadius:10, cursor:"pointer", color:C.textDim, fontSize:12, transition:"all .12s" }}>
+                        <Icon size={15} color={C.cyan} /> {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── PENDIENTES ─────────────────────────────────────────── */}
+              {page === "pendientes" && (
+                <div style={{ padding:"20px 18px" }}>
+                  <div style={{ ...btwn, marginBottom:16 }}>
+                    <div style={{ fontSize:9, color:C.muted, letterSpacing:2, fontWeight:600 }}>TODAS LAS TAREAS</div>
+                    <button onClick={() => setAddingTodo(true)} style={{ ...row, gap:5, background:C.cyanDeep, border:"none", borderRadius:7, color:"#fff", cursor:"pointer", padding:"6px 12px", fontSize:12 }}>
+                      <Plus size={13} /> Nueva tarea
+                    </button>
+                  </div>
+                  {addingTodo && (
+                    <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+                      <input autoFocus value={newTodo} onChange={e => setNewTodo(e.target.value)}
+                        onKeyDown={e => { if (e.key==="Enter") addTodo(); if (e.key==="Escape") setAddingTodo(false); }}
+                        placeholder="Escribe la tarea..."
+                        style={{ flex:1, padding:"9px 12px", background:C.bgPanel, border:`1px solid ${C.borderHi}`, borderRadius:8, color:C.text, fontSize:12, outline:"none" }} />
+                      <button onClick={addTodo} style={{ background:C.cyanDeep, border:"none", borderRadius:8, color:"#fff", cursor:"pointer", padding:"9px 14px", fontSize:12 }}>Agregar</button>
+                    </div>
+                  )}
+                  <div style={{ ...col, gap:8 }}>
+                    {todos.map(({ id, text, done }) => (
+                      <div key={id} style={{ ...row, gap:12, padding:"12px 14px", background:C.bgPanel, border:`1px solid ${C.border}`, borderRadius:10, cursor:"pointer" }} onClick={() => toggleTodo(id)}>
+                        <div style={{ width:18, height:18, borderRadius:5, flexShrink:0, background:done?C.cyanDeep:"transparent", border:`1.5px solid ${done?C.cyanDeep:C.borderHi}`, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                          {done && <Check size={11} color="#fff" strokeWidth={3} />}
+                        </div>
+                        <span style={{ flex:1, fontSize:13, color:done?C.muted:C.text, textDecoration:done?"line-through":"none" }}>{text}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ marginTop:16 }}>
+                    <div style={{ fontSize:11, color:C.muted, marginBottom:6 }}>{todos.filter(t=>t.done).length} de {todos.length} completadas</div>
+                    <div style={{ height:4, background:C.bgBase, borderRadius:3 }}>
+                      <div style={{ height:"100%", borderRadius:3, background:C.ok, width:`${(todos.filter(t=>t.done).length/todos.length)*100}%`, transition:"width .3s ease" }} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── INTERNET ───────────────────────────────────────────── */}
+              {page === "internet" && (
+                <div style={{ padding:"20px 18px" }}>
+                  <div style={{ fontSize:9, color:C.muted, letterSpacing:2, fontWeight:600, marginBottom:16 }}>INTERNET</div>
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10 }}>
+                    {[
+                      { label:"Verificar conexión", cmd:"cmd:hay internet",     Icon:Wifi     },
+                      { label:"Mi IP",              cmd:"cmd:mi ip",            Icon:Globe    },
+                      { label:"Ver noticias",       cmd:"cmd:noticias",         Icon:FileText },
+                      { label:"Abrir YouTube",      cmd:"cmd:youtube",          Icon:Play     },
+                    ].map(({ label, cmd, Icon }) => (
+                      <button key={label} onClick={() => sendCommand(cmd)}
+                        className="qbtn" style={{ ...row, gap:10, padding:"12px 14px", background:C.bgPanel, border:`1px solid ${C.border}`, borderRadius:10, cursor:"pointer", color:C.textDim, fontSize:12, transition:"all .12s" }}>
+                        <Icon size={15} color={C.cyan} /> {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── PÁGINAS EN DESARROLLO ──────────────────────────────── */}
+              {["memoria","automatizaciones","desarrollo","notas","config"].includes(page) && (
+                <div style={{ ...col, alignItems:"center", justifyContent:"center", flex:1, gap:12, color:C.textDim, padding:40 }}>
+                  <Activity size={40} color={C.muted} />
+                  <div style={{ fontSize:15, fontWeight:600, color:C.text }}>{navItems.find(n=>n.id===page)?.label}</div>
+                  <div style={{ fontSize:12, color:C.muted, textAlign:"center" }}>Esta sección está en desarrollo.<br/>Usa el input de voz para interactuar.</div>
+                </div>
+              )}
+
             </div>
 
             {/* ── RIGHT PANEL ───────────────────────────────────────────── */}
@@ -612,12 +745,14 @@ export default function App() {
                           {apps.join(" · ")}
                         </div>
                       </div>
-                      <button style={{
-                        width:26, height:26, borderRadius:"50%", flexShrink:0,
-                        background:bg, border:`1px solid ${color}44`,
-                        display:"flex", alignItems:"center", justifyContent:"center",
-                        cursor:"pointer", color,
-                      }}>
+                      <button
+                        onClick={() => sendCommand(`action:${title.replace("Modo ","modo_").toLowerCase()}`)}
+                        style={{
+                          width:26, height:26, borderRadius:"50%", flexShrink:0,
+                          background:bg, border:`1px solid ${color}44`,
+                          display:"flex", alignItems:"center", justifyContent:"center",
+                          cursor:"pointer", color,
+                        }}>
                         <Play size={11} fill={color} />
                       </button>
                     </div>
@@ -629,10 +764,24 @@ export default function App() {
               <div>
                 <div style={{ ...btwn, marginBottom:10 }}>
                   <div style={{ fontSize:9, color:C.muted, letterSpacing:2, fontWeight:600 }}>PENDIENTES</div>
-                  <button style={{ background:"transparent", border:"none", color:C.cyan, cursor:"pointer", padding:0 }}>
+                  <button onClick={() => setAddingTodo(true)} style={{ background:"transparent", border:"none", color:C.cyan, cursor:"pointer", padding:0 }}>
                     <Plus size={14} />
                   </button>
                 </div>
+                {addingTodo && (
+                  <div style={{ display:"flex", gap:5, marginBottom:8 }}>
+                    <input
+                      autoFocus
+                      value={newTodo}
+                      onChange={e => setNewTodo(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") addTodo(); if (e.key === "Escape") setAddingTodo(false); }}
+                      placeholder="Nueva tarea..."
+                      style={{ flex:1, padding:"5px 8px", background:C.bgPanel, border:`1px solid ${C.borderHi}`, borderRadius:6, color:C.text, fontSize:11, outline:"none" }}
+                    />
+                    <button onClick={addTodo} style={{ background:C.cyanDeep, border:"none", borderRadius:6, color:"#fff", cursor:"pointer", padding:"5px 8px", fontSize:11 }}>+</button>
+                    <button onClick={() => setAddingTodo(false)} style={{ background:"transparent", border:`1px solid ${C.border}`, borderRadius:6, color:C.muted, cursor:"pointer", padding:"5px 7px", fontSize:11 }}>✕</button>
+                  </div>
+                )}
                 <div style={{ ...col, gap:8 }}>
                   {todos.map(({ id, text, done }) => (
                     <div key={id} style={{ ...row, gap:10, cursor:"pointer" }} onClick={()=>toggleTodo(id)}>
@@ -696,7 +845,9 @@ export default function App() {
                 borderRadius:22, color:C.text, fontSize:12, outline:"none",
               }}
             />
-            <button style={{
+            <button
+              onClick={() => sendCommand("action:mic")}
+              style={{
               width:40, height:40, borderRadius:"50%", flexShrink:0,
               background:`linear-gradient(135deg, ${C.cyanDeep}, ${C.cyan})`,
               border:"none", display:"flex", alignItems:"center",

@@ -1,8 +1,13 @@
 # main.py
 import sys
+import os
+
+# Añade src/ al path para que Lia.py pueda hacer "from mod_X import ..."
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from PySide6.QtWidgets import QApplication
-from src.Lia import LiaAssistant
-from src.mod_gui import LiaMainWindow
+from Lia import LiaAssistant
+from mod_gui import LiaMainWindow
 
 
 def main():
@@ -11,10 +16,7 @@ def main():
     print("[MAIN] Iniciando Lia...")
 
     try:
-        # Crea la instancia de Lia
         lia = LiaAssistant()
-
-        # Crea y muestra la ventana
         window = LiaMainWindow(lia)
         window.show()
 
