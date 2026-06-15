@@ -22,6 +22,7 @@ from __future__ import annotations
 import logging
 from typing import Optional, Protocol
 
+from core.event_bus import Event
 from core.intent import IntentMatch, IntentSpec
 
 logger = logging.getLogger("lia.router")
@@ -93,12 +94,21 @@ class IntentRouter:
         # 2) Intención determinista.
         match = self.match(cmd_l)
         if match is not None:
-            ctx.bus.publish("intent", {"name": match.name, "text": cmd_l})
+            ctx.bus.publish(Event.INTENT, {"name": match.name, "text": cmd_l})
             try:
                 match.spec.handler(ctx, match)
             except Exception as ex:
                 logger.error("Handler de '%s' falló: %s", match.name, ex, exc_info=True)
+                ctx.bus.publish(Event.COMMAND_FAILED,
+                                {"name": match.name, "text": cmd_l, "error": str(ex)})
                 ctx.say(ctx.persona.error_generico("completar esa acción"))
+            else:
+                # Permite que otros módulos reaccionen sin acoplarse (estadísticas,
+                # GUI, plugins que escuchan "comando ejecutado").
+                ctx.bus.publish(Event.COMMAND_EXECUTED,
+                                {"name": match.name, "text": cmd_l,
+                                 "skill": match.spec.skill,
+                                 "category": match.spec.category})
             return True
 
         # 3) Resolutor por IA (futuro; hoy None).

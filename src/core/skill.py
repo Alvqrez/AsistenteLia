@@ -34,6 +34,11 @@ class Skill:
     #: identificador legible de la skill (lo usan logs y el registry)
     name: str = "skill"
 
+    #: categoría por defecto de las intenciones de esta skill. Cada IntentSpec
+    #: puede sobreescribirla con su propio `category`; si lo deja vacío, el
+    #: registry sella esta. Alimenta el help dinámico agrupado.
+    category: str = ""
+
     def intents(self, ctx) -> Iterable[IntentSpec]:
         """Devuelve los IntentSpec que aporta esta skill. Sobreescribir."""
         return ()
@@ -48,7 +53,11 @@ class SkillRegistry:
         self.skills: list[Skill] = []
 
     def discover(self, package_name: str = "skills") -> list[type[Skill]]:
-        """Importa todos los módulos del paquete y recolecta subclases de Skill."""
+        """
+        Importa los módulos del paquete (recursivo: soporta subpaquetes tipo
+        `plugins/spotify/*.py`) y recolecta subclases de Skill.
+        Los módulos cuyo nombre empieza por '_' son helpers y se omiten.
+        """
         clases: list[type[Skill]] = []
         try:
             paquete = importlib.import_module(package_name)
@@ -57,8 +66,10 @@ class SkillRegistry:
                          package_name, ex)
             return clases
 
-        for _, mod_name, _ in pkgutil.iter_modules(paquete.__path__):
-            full = f"{package_name}.{mod_name}"
+        for _, full, _ in pkgutil.walk_packages(paquete.__path__,
+                                                prefix=f"{package_name}."):
+            if full.rsplit(".", 1)[-1].startswith("_"):
+                continue
             try:
                 modulo = importlib.import_module(full)
             except Exception as ex:
@@ -78,9 +89,11 @@ class SkillRegistry:
                 skill = cls()
                 skill.on_load(ctx)
                 specs = list(skill.intents(ctx))
-                # Sellar el nombre de la skill propietaria en cada spec.
+                # Sellar metadata de la skill propietaria en cada spec.
                 for s in specs:
                     object.__setattr__(s, "skill", skill.name)
+                    if not s.category:
+                        object.__setattr__(s, "category", skill.category)
                     router.register(s)
                 self.skills.append(skill)
                 total_intents += len(specs)

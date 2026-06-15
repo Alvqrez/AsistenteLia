@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import json
 import logging
 import os
 import subprocess
@@ -31,6 +32,58 @@ class ContextoConversacional:
         "pom.xml":           ["mvn", "spring-boot:run"],
         "go.mod":            ["go", "run", "."],
     }
+
+    @staticmethod
+    def detectar_comando_proyecto(ruta: str):
+        """
+        Modo JARVIS: detecta el tipo de proyecto en `ruta` y devuelve
+        (comando_str, tipo) o (None, None). Para package.json inspecciona
+        dependencias/scripts para distinguir Vite / React / Node genérico.
+        """
+        def _existe(nombre):
+            return os.path.exists(os.path.join(ruta, nombre))
+
+        if _existe("pubspec.yaml"):
+            return "flutter run", "Flutter"
+        if _existe("package.json"):
+            try:
+                with open(os.path.join(ruta, "package.json"), encoding="utf-8") as f:
+                    pkg = json.load(f)
+            except Exception:
+                pkg = {}
+            deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
+            scripts = pkg.get("scripts", {})
+            if "vite" in deps or "vite" in str(scripts.get("dev", "")):
+                return "npm run dev", "Vite"
+            if "next" in deps:
+                return "npm run dev", "Next.js"
+            if "react-scripts" in deps:
+                return "npm start", "React"
+            if "dev" in scripts:
+                return "npm run dev", "Node"
+            if "start" in scripts:
+                return "npm start", "Node"
+            return "npm run dev", "Node"
+        if _existe("manage.py"):
+            return "python manage.py runserver", "Django"
+        if _existe("main.py"):
+            return "python main.py", "Python"
+        if _existe("app.py"):
+            return "python app.py", "Python"
+        if _existe("Cargo.toml"):
+            return "cargo run", "Rust"
+        if _existe("go.mod"):
+            return "go run .", "Go"
+        if _existe("pom.xml"):
+            return "mvn spring-boot:run", "Java"
+        if _existe("requirements.txt"):
+            return "python main.py", "Python"
+        return None, None
+
+    @staticmethod
+    def ejecutar_en_terminal(comando: str, ruta: str):
+        """Lanza `comando` en una ventana de terminal visible, con cwd=ruta."""
+        subprocess.Popen(f'start "Lia" cmd /k "{comando}"', cwd=ruta, shell=True)
 
     def __init__(self, parent_lia):
         self.lia = parent_lia
@@ -126,19 +179,20 @@ class ContextoConversacional:
         self.lia.hablar("No sé qué ejecutar. Primero dime en qué proyecto estás trabajando.")
 
     def _ejecutar_proyecto(self, ruta: str):
-        for archivo, cmd in self.INDICADORES_PROYECTO.items():
-            ruta_archivo = os.path.join(ruta, archivo)
-            if os.path.exists(ruta_archivo):
-                try:
-                    subprocess.Popen(cmd, cwd=ruta, shell=False)
-                    self.lia.hablar(f"Ejecutando el proyecto.")
-                    logger.info("Ejecutando proyecto en %s con %s", ruta, cmd)
-                    return
-                except Exception as ex:
-                    logger.error("Error al ejecutar proyecto: %s", ex)
-                    self.lia.hablar("Hubo un error al ejecutar el proyecto.")
-                    return
-        self.lia.hablar("No reconocí el tipo de proyecto para ejecutarlo.")
+        # Modo JARVIS: detecta Flutter/Vite/React/Node/Python/etc. y lanza el
+        # comando correcto en una terminal visible (npm/flutter necesitan
+        # consola; Popen sin shell fallaba con npm.cmd en Windows).
+        comando, tipo = self.detectar_comando_proyecto(ruta)
+        if comando is None:
+            self.lia.hablar("No reconocí el tipo de proyecto para ejecutarlo.")
+            return
+        try:
+            self.ejecutar_en_terminal(comando, ruta)
+            self.lia.hablar(f"Proyecto {tipo} detectado. Ejecutando {comando}.")
+            logger.info("Ejecutando proyecto %s en %s con '%s'", tipo, ruta, comando)
+        except Exception as ex:
+            logger.error("Error al ejecutar proyecto: %s", ex)
+            self.lia.hablar("Hubo un error al ejecutar el proyecto.")
 
     def _ejecutar_archivo(self, ruta: str):
         _, ext = os.path.splitext(ruta.lower())

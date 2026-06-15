@@ -16,7 +16,8 @@ logger = logging.getLogger("lia.skill.tasks")
 
 _SINONIMOS_PENDIENTES = (
     "pendientes", "mis pendientes", "qué tengo pendiente", "que tengo pendiente",
-    "mis tareas", "lista de tareas", "qué debo hacer", "que debo hacer",
+    "mis tareas", "lista de tareas", "lista tareas", "lista mis tareas",
+    "qué debo hacer", "que debo hacer",
     "qué tengo que hacer", "que tengo que hacer", "dime mis pendientes",
     "mis compromisos", "en qué andaba", "en que andaba",
 )
@@ -69,26 +70,42 @@ def _listar_notas(ctx, m):
 
 class TasksSkill(Skill):
     name = "tasks"
+    category = "tareas"
 
     def intents(self, ctx):
         return [
             IntentSpec(name="tasks.pendientes", priority=290,
                        matcher=contains_any(_SINONIMOS_PENDIENTES), handler=_pendientes,
+                       description="Lee tus pendientes (sincronizados con Obsidian)",
+                       aliases=("pendientes", "mis tareas"),
                        examples=("pendientes", "mis tareas", "qué debo hacer")),
             IntentSpec(name="tasks.anotar", priority=300,
                        matcher=contains_any(_VERBOS_ANOTAR), handler=_anotar,
+                       description="Anota un pendiente nuevo",
+                       aliases=("anota comprar pan",),
                        examples=("anota comprar pan", "apunta llamar a Ana")),
             IntentSpec(name="tasks.completar", priority=310,
                        matcher=all_of(contains_any(_KW_COMPLETAR),
                                       contains_any(("tarea", "pendiente"))),
-                       handler=_completar, examples=("tarea comprar pan lista",)),
+                       handler=_completar,
+                       description="Marca una tarea como completada",
+                       aliases=("tarea comprar pan lista",),
+                       examples=("tarea comprar pan lista",)),
             IntentSpec(name="tasks.nota", priority=320,
                        matcher=starts_with(("nota ",)), handler=_nota,
+                       description="Guarda una nota clave-valor",
+                       aliases=("nota wifi clave1234",),
                        examples=("nota wifi clave1234",)),
             IntentSpec(name="tasks.leer_nota", priority=330,
                        matcher=contains_any(("recuerda nota ", "lee nota ")),
-                       handler=_leer_nota, examples=("recuerda nota wifi",)),
+                       handler=_leer_nota,
+                       description="Lee una nota guardada por su clave",
+                       aliases=("recuerda nota wifi",),
+                       examples=("recuerda nota wifi",)),
             IntentSpec(name="tasks.listar_notas", priority=340,
                        matcher=contains_any(("lista notas", "mis notas")),
-                       handler=_listar_notas, examples=("mis notas",)),
+                       handler=_listar_notas,
+                       description="Lista todas tus notas guardadas",
+                       aliases=("mis notas",),
+                       examples=("mis notas",)),
         ]

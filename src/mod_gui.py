@@ -76,11 +76,18 @@ class LiaMainWindow(QMainWindow):
         self.tray.setToolTip("Lia - Asistente Personal")
 
         menu = QMenu()
+
         action_show = QAction("Abrir Lia", self)
         action_show.triggered.connect(self._show_window)
+
+        self._action_pause = QAction("Pausar", self)
+        self._action_pause.triggered.connect(self._toggle_pause)
+
         action_quit = QAction("Salir", self)
         action_quit.triggered.connect(QApplication.quit)
+
         menu.addAction(action_show)
+        menu.addAction(self._action_pause)
         menu.addSeparator()
         menu.addAction(action_quit)
 
@@ -94,8 +101,30 @@ class LiaMainWindow(QMainWindow):
 
     def _show_window(self):
         self.showNormal()
+        self.setWindowState((self.windowState() & ~Qt.WindowMinimized) | Qt.WindowActive)
         self.activateWindow()
         self.raise_()
+        # En Windows, activateWindow() puede fallar silenciosamente si otra app
+        # tiene el foco. SetForegroundWindow fuerza el primer plano de verdad.
+        try:
+            import ctypes
+            hwnd = int(self.winId())
+            ctypes.windll.user32.ShowWindow(hwnd, 9)   # SW_RESTORE
+            ctypes.windll.user32.SetForegroundWindow(hwnd)
+        except Exception:
+            pass
+
+    def _toggle_pause(self):
+        if self.lia is None:
+            return
+        if self.lia.active():
+            self.lia.pause()
+            self._action_pause.setText("Reanudar")
+            self.tray.setToolTip("Lia - En pausa")
+        else:
+            self.lia.resume()
+            self._action_pause.setText("Pausar")
+            self.tray.setToolTip("Lia - Asistente Personal")
 
     def log(self, texto: str):
         """Envía un mensaje de log a la interfaz"""

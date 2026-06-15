@@ -33,19 +33,29 @@ class IntentSpec:
     """
     Declaración de una intención registrada por una skill.
 
-    name       — identificador único, p.ej. "apps.abrir".
-    matcher    — función que decide si un texto activa esta intención y extrae slots.
-    handler    — función que ejecuta la acción.
-    priority   — orden de evaluación (menor = se evalúa antes). Permite reproducir
-                 con exactitud el orden del antiguo if/elif y resolver colisiones
-                 (p.ej. "resumen personal" debe ganar a "resumen").
-    examples   — frases de ejemplo; documentación viva y semilla para NLU/IA futura.
-    skill      — nombre de la skill propietaria (lo rellena el registry).
+    name        — identificador único, p.ej. "apps.abrir".
+    matcher     — función que decide si un texto activa esta intención y extrae slots.
+    handler     — función que ejecuta la acción.
+    priority    — orden de evaluación (menor = se evalúa antes). Permite reproducir
+                  con exactitud el orden del antiguo if/elif y resolver colisiones
+                  (p.ej. "resumen personal" debe ganar a "resumen").
+    description — qué hace el comando, en una línea. Alimenta el help dinámico
+                  y la búsqueda de comandos; nunca se hardcodea en menús.
+    category    — agrupación para el help ("desarrollo", "internet", ...). Si se
+                  deja vacía, el registry hereda la `category` de la skill dueña.
+    aliases     — frases canónicas que disparan la intención. Son metadata viva:
+                  el CommandRegistry las usa para el help, la búsqueda y la
+                  VALIDACIÓN de conflictos (cada alias debe rutear a su dueño).
+    examples    — frases de ejemplo con slots; documentación viva y semilla NLU.
+    skill       — nombre de la skill propietaria (lo rellena el registry).
     """
     name: str
     matcher: Matcher
     handler: Handler
     priority: int = 1000
+    description: str = ""
+    category: str = ""
+    aliases: tuple[str, ...] = ()
     examples: tuple[str, ...] = ()
     skill: str = ""
 

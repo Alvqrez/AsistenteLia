@@ -59,10 +59,17 @@ package-lock.json
 *.log
 .logs/
 
-# Proyecto específico
+# Proyecto específico - datos locales de usuario
 data/lia.log
+lia.log
 data/*.json
 data/*.bak
+lia_config.json
+lia_historial.json
+lia_audio_profile.json
+lia_modos.json
+lia_scheduler.json
+_lia_startup_wrapper.py
 *.spec
 
 # Build & Distribution

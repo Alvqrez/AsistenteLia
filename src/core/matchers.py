@@ -116,6 +116,24 @@ def all_of(*matchers) -> "callable":
     return _m
 
 
+def any_of(*matchers) -> "callable":
+    """
+    Composición OR: devuelve el resultado del primer matcher que coincide.
+    Útil para mezclar criterios, p.ej. palabras cortas ambiguas solo por
+    igualdad exacta + frases largas por contención:
+        any_of(equals_any(("para", "pausa")), contains_any(("voy a descansar",)))
+    """
+
+    def _m(cmd: str) -> Optional[dict]:
+        for mt in matchers:
+            res = mt(cmd)
+            if res is not None:
+                return res
+        return None
+
+    return _m
+
+
 def without(matcher, palabras_prohibidas: Iterable[str]) -> "callable":
     """
     Envuelve un matcher para que NO coincida si el texto contiene ciertas

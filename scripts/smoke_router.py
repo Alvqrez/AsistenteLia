@@ -23,7 +23,9 @@ from core.skill import SkillRegistry
 # Contexto mínimo: el matching solo usa funciones de texto puras.
 ctx = AssistantContext(EventBus(), config=None, persona=None, memory=None)
 router = IntentRouter(ctx)
-n = SkillRegistry().register_all(router, ctx, package_name="skills")
+_registry = SkillRegistry()
+n = _registry.register_all(router, ctx, package_name="skills")
+n += _registry.register_all(router, ctx, package_name="plugins")
 
 CASOS = [
     ("abre spotify", "apps.abrir"),
@@ -87,6 +89,65 @@ CASOS = [
     ("ya regresé", "control.reactivar"),
     ("apagate", "control.apagate"),
     ("recalibra", "control.calibrar"),
+    # ── Plugins (v5.1) ─────────────────────────────────────────────────
+    ("pausa la música", "musica.pausar"),                    # colisión con control.pausa
+    ("pausa", "control.pausa"),                              # exacto sigue pausando a Lia
+    ("reproduce música", "musica.reproducir"),
+    ("siguiente canción", "musica.siguiente"),
+    ("canción anterior", "musica.anterior"),
+    ("sube el volumen", "musica.subir_volumen"),
+    ("volumen al 50", "musica.volumen_a"),
+    ("qué canción está sonando", "musica.cancion_actual"),
+    ("quién canta esta canción", "musica.cancion_actual"),
+    ("abre mi proyecto actual", "dev.proyecto_actual"),      # colisión con ws.abrir_proyecto
+    ("abre la carpeta del proyecto", "dev.carpeta_proyecto"),
+    ("abre el proyecto lia", "ws.abrir_proyecto"),           # no debe romperse
+    ("ejecuta flutter run", "dev.ejecutar_comando"),
+    ("ejecuta npm run dev", "dev.ejecutar_comando"),
+    ("ejecuta npm install", "dev.ejecutar_comando"),
+    ("abre powershell", "apps.abrir"),
+    ("abre android studio", "apps.abrir"),
+    ("pausa el pomodoro", "prod.pomodoro_pausar"),           # colisión con control.pausa y prod.pomodoro
+    ("cancela el pomodoro", "prod.pomodoro_cancelar"),
+    ("reanuda el pomodoro", "prod.pomodoro_reanudar"),
+    ("pomodoro 30", "prod.pomodoro"),                        # no debe romperse
+    ("agenda mi día", "prod.agenda_dia"),
+    ("cuál es mi prioridad", "prod.prioridad"),
+    ("qué debería hacer hoy", "prod.prioridad"),
+    ("en qué debería enfocarme", "prod.prioridad"),
+    ("recuérdame mis objetivos", "prod.objetivos"),          # colisión con rem.fecha
+    ("inicia modo profundo", "prod.modo_profundo"),
+    ("agrega idea app de recetas", "proy.agregar_idea"),     # colisión con tasks.anotar
+    ("recuérdame mis ideas", "proy.listar_ideas"),           # colisión con rem.fecha
+    ("lista ideas", "proy.listar_ideas"),
+    ("lista proyectos", "proy.listar"),
+    ("proyecto activo", "proy.activo"),
+    ("cambia proyecto activo a lia", "proy.cambiar_activo"),
+    ("agrega examen de física el 20 de junio", "uni.agregar_examen"),
+    ("próximos exámenes", "uni.proximos_examenes"),
+    ("cuánto falta para el examen", "uni.cuanto_falta"),     # 'para' ya no pausa a Lia
+    ("recuerda pagar la luz para mañana", "rem.fecha"),      # 'para' ya no pausa a Lia
+    ("agrega tarea estudiar cálculo", "tasks.anotar"),
+    ("lista tareas", "tasks.pendientes"),
+    ("uso de cpu", "salud.cpu"),                             # colisión con system.info
+    ("uso de ram", "salud.ram"),
+    ("salud del disco", "salud.disco"),                      # colisión con system.disco
+    ("temperatura cpu", "salud.temp_cpu"),
+    ("temperatura gpu", "salud.temp_gpu"),
+    ("optimiza memoria", "salud.optimizar"),
+    ("limpia temporales", "salud.temporales"),
+    ("estado del sistema", "system.info"),
+    ("abre mi entorno de trabajo", "auto.entorno_trabajo"),  # colisión con apps.abrir
+    ("abre entorno flutter", "auto.entorno_flutter"),
+    ("abre entorno web", "auto.entorno_web"),
+    ("genera contraseña segura", "util.password"),
+    ("genera contraseña de 20 caracteres", "util.password"),
+    ("apaga la pantalla", "util.apagar_pantalla"),           # colisión con system.apagar
+    ("bloquea la pc", "system.bloquear"),
+    ("desbloquea sitios", "focus.desactivar"),               # bug corregido en v5.1
+    ("busca comando git", "control.buscar_comando"),
+    ("qué comandos tienes", "control.ayuda"),
+    ("qué puedes hacer", "control.ayuda"),
 ]
 
 fallos = 0

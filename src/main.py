@@ -1,8 +1,8 @@
 # main.py — Punto de entrada de Lia.
 #
-# Arranca el LiaKernel (nueva arquitectura: EventBus + IntentRouter + Skills) y
-# la GUI (PySide6 + React). El antiguo `Lia.py` (god-object) queda como fallback
-# hasta validar esta versión; ya no se usa aquí.
+# Arranca el LiaKernel (arquitectura: EventBus + IntentRouter + CommandRegistry
+# + Skills/Plugins auto-descubiertos) y la GUI (PySide6 + React). El antiguo
+# `Lia.py` (god-object con if/elif) fue eliminado en v5.1.
 import logging
 import os
 import sys

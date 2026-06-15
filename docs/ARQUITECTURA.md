@@ -1,8 +1,8 @@
 # Arquitectura de Lia
 
-> Documento de la Fase 14. Describe la arquitectura **anterior**, la **nueva**
-> (ya implementada), el diagrama de módulos, el plan de migración, los riesgos
-> y las prioridades para los próximos años.
+> Documento de la Fase 14, actualizado en v5.1 (Command Registry). Describe la
+> arquitectura **anterior**, la **nueva** (ya implementada), el diagrama de
+> módulos, el plan de migración, los riesgos y las prioridades.
 
 ---
 
@@ -32,7 +32,7 @@ DRY), memoria fragmentada, recordatorios efímeros, GUI acoplada a internals.
 
 ---
 
-## 2. Arquitectura nueva (v5.0) — implementada
+## 2. Arquitectura nueva (v5.1) — implementada
 
 ```
                          ┌──────────────┐
@@ -43,20 +43,23 @@ DRY), memoria fragmentada, recordatorios efímeros, GUI acoplada a internals.
    ┌─────────┐   ┌────────────┐ │      ┌──────────┐  ┌─────────────┐
    │ EventBus│   │AssistantCtx│ │      │IntentRouter│  │SkillRegistry│
    │ (pub/sub│◄──┤ (fachada + │ │      │ (prioridad │  │(auto-descubre│
-   │ logs/UI)│   │  DI + ask) │ │      │  → handler)│  │  skills/)   │
+   │ logs/UI)│   │  DI + ask) │ │      │  → handler)│  │ RECURSIVO)  │
    └─────────┘   └──────┬─────┘ │      └─────┬──────┘  └──────┬──────┘
-                        │       │            │ registra        │
-                        │       │            ▼                 ▼
-                        │       │     ┌──────────────────────────────┐
-                        │       │     │  skills/  (auto-registradas)  │
-                        │       │     │  apps, files, system_info,    │
-                        │       │     │  dev, internet, tasks,        │
-                        │       │     │  productivity, reminders,     │
-                        │       │     │  focus, vida, workspace,      │
-                        │       │     │  resumen, voice_control       │
-                        │       │     └───────────────┬──────────────┘
-                        │       │ inyecta servicios    │ delega en
-                        ▼       ▼                      ▼
+        ▲               │       │            │                 │
+        │ command_      │       │      ┌─────┴───────┐         │
+        │ executed/     │       │      │CommandRegistry│        │
+        │ failed/intent │       │      │ list/search/ │◄── help dinámico,
+        │               │       │      │ validate     │    "busca comando X"
+        │               │       │      └──────────────┘
+        │               │       │            ▲ registra
+        │               │       │   ┌────────┴──────────────────────┐
+        │               │       │   │ skills/   (built-in, 13 mods) │
+        │               │       │   │ plugins/<categoria>/*.py      │
+        │               │       │   │   (terceros/personales,       │
+        │               │       │   │    descubrimiento recursivo)  │
+        │               │       │   └───────────────┬───────────────┘
+        │               │ inyecta servicios          │ delega en
+        │               ▼                            ▼
    ┌────────────────────────────────────────────────────────────────┐
    │ services/                       │  mod_* (capa de implementación │
    │  memory_store  (corto/largo)    │  REUTILIZADA, sin reescribir): │
@@ -69,6 +72,33 @@ DRY), memoria fragmentada, recordatorios efímeros, GUI acoplada a internals.
    GUI (mod_gui + web/) ──► se suscribe al EventBus (SPEAK/ACTIVITY/STATUS)
                             y envía comandos vía kernel.handle_text()
 ```
+
+### Novedades v5.1 (Command Registry)
+- **`core/registry.py` — CommandRegistry**: catálogo consultable de comandos
+  (listar, buscar, describir, ejecutar) + **validación al arranque**: nombres
+  duplicados, aliases duplicados, aliases "secuestrados" por otra intención y
+  comandos sin descripción.
+- **Metadata en `IntentSpec`**: `description`, `category` (heredable de la
+  skill) y `aliases` (frases canónicas, validadas contra el router real).
+- **Plugins**: `plugins/<categoria>/*.py` se cargan automáticamente
+  (descubrimiento recursivo). Plantilla en `plugins/_plantilla.py`; guía en
+  `docs/CREAR_COMANDO.md`. Plugins reales incluidos (123 comandos en total):
+  `musica/` (control de Spotify/volumen/canción actual), `desarrollo/`
+  (proyecto activo, runner de comandos flutter/npm con whitelist),
+  `productividad/` (agenda del día, prioridad, modo profundo, control de
+  pomodoro), `proyectos/` (ideas, proyecto activo), `universidad/` (exámenes
+  con cuenta regresiva), `sistema/` (salud: CPU/RAM/disco/temperaturas,
+  optimizar memoria, limpiar temporales), `automatizacion/` (entornos de
+  trabajo/Flutter/web) y `utilidades/` (contraseñas seguras, apagar pantalla).
+- **Modo JARVIS**: `mod_contexto.detectar_comando_proyecto()` detecta
+  Flutter/Vite/Next/React/Node/Django/Python/Rust/Go y "ejecuta el proyecto"
+  lanza el comando correcto en una terminal visible, sin preguntar.
+- **Help 100% dinámico**: `lia_comandos.txt` y el resumen hablado se generan
+  desde el registry; nada hardcodeado. Nuevo comando "busca comando X".
+- **Eventos de comando**: el router publica `intent`, `command_executed` y
+  `command_failed` en el EventBus (módulos/plugins reaccionan sin acoplarse).
+- **`Lia.py` y `mod_dashboard.py` eliminados**: el if/elif de 620 líneas ya no
+  existe ni como fallback.
 
 ### Principios aplicados
 - **DIP:** las skills dependen de `AssistantContext` (abstracción), no del kernel.
@@ -101,10 +131,10 @@ prioridades explícitas y documentadas (p. ej. `vida.resumen`=680 gana a
 | 6 | Endurecimiento de seguridad (confirmación destructivos) | ✅ Hecho |
 | 7 | **Dashboard consolidado** (una sola GUI React con datos reales) | ✅ Hecho |
 | 7 | **Memoria semántica** (`recall` por embeddings) | ✅ Hecho |
+| 9 | **CommandRegistry** (metadata, validación, búsqueda, help dinámico) | ✅ Hecho (v5.1) |
+| 9 | **Plugin system** (`plugins/<categoria>/`, carga recursiva) | ✅ Hecho (v5.1) |
+| 9 | **`Lia.py` + `mod_dashboard.py` eliminados** (fin del if/elif) | ✅ Hecho (v5.1) |
 | 8+ | Visión/OCR, control de escritorio | 🟡 Scaffold listo |
-
-`Lia.py` (god-object) se **conserva como fallback** hasta validar v5.0 en uso
-real; `main.py` ya arranca el `LiaKernel`.
 
 ---
 
@@ -135,9 +165,11 @@ real; `main.py` ya arranca el `LiaKernel`.
 ## 5. Riesgos y mitigaciones
 
 1. **No se pudo probar el flujo de voz/audio real en migración** (sin micrófono
-   en el entorno de desarrollo). *Mitigación:* `Lia.py` se conserva como fallback;
-   tests de ruteo (`scripts/smoke_router.py`, 61 casos) y de comportamiento
-   (`scripts/smoke_behavior.py`) cubren la lógica sin audio. **Validar en uso real.**
+   en el entorno de desarrollo). *Mitigación:* tests de ruteo
+   (`scripts/smoke_router.py`, 61 casos), de comportamiento
+   (`scripts/smoke_behavior.py`) y de catálogo (`scripts/smoke_registry.py`)
+   cubren la lógica sin audio. `Lia.py` fue eliminado en v5.1 (recuperable en
+   git si hiciera falta). **Validar en uso real.**
 2. **Bugs latentes corregidos** podrían cambiar comportamiento que alguien
    esperaba roto: `nueva rama`/`mis ramas` ya no caen en "info del sistema"
    (la subcadena `ram`); `agrega meta/hábito/proyecto` ya no se anotan como
@@ -159,14 +191,19 @@ real; `main.py` ya arranca el `LiaKernel`.
 
 ## 6. Prioridades recomendadas (próximos pasos)
 
-1. **Validar v5.0 con micrófono real**; si todo bien, eliminar `Lia.py` y
-   `mod_dashboard.py` (ya deprecado).
+1. **Validar v5.1 con micrófono real** (la lógica está cubierta por smokes,
+   pero el flujo de audio solo se valida en uso).
 2. **Fase 6 (IA):** implementar `ClaudeProvider`/`OpenAIProvider` y un
-   `IntentResolver` de fallback → conversación natural real. Con IA disponible,
-   activar también `sentence-transformers` para `recall` semántico de alta precisión.
-3. **Fase 8/9:** implementar `DesktopService` (ventanas/multimedia) y
+   `IntentResolver` de fallback → conversación natural real. Los
+   `IntentSpec.examples`/`aliases` ya son el dataset para ese resolutor. Con IA
+   disponible, activar `sentence-transformers` para `recall` de alta precisión.
+3. **Primer plugin real** (p.ej. `plugins/musica/` con control de Spotify) para
+   ejercitar el pipeline de plugins de punta a punta.
+4. **Fase 8/9:** implementar `DesktopService` (ventanas/multimedia) y
    `VisionService` (OCR de pantalla) sobre los scaffolds ya creados.
-4. **Tests:** ampliar la batería de `smoke_router` a medida que se añaden skills.
+5. **Tests:** `smoke_registry.py` en cada arranque de CI; ampliar `smoke_router`
+   al añadir comandos.
 
-Ya completado: dashboard consolidado (React único con datos reales) y memoria
-semántica (`recall` por embeddings offline).
+Ya completado: dashboard consolidado, memoria semántica, CommandRegistry con
+validación, plugins auto-descubiertos, help dinámico y retiro definitivo del
+god-object.

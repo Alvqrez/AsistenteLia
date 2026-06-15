@@ -38,6 +38,34 @@ if not os.path.exists(_pythonw_exe):
 
 PYTHON_EXE = _pythonw_exe
 
+# ── Crear wrapper script para iniciar desde el directorio correcto ────────────
+# El VBS ejecuta desde C:\Windows\System32 → necesitamos cambiar al directorio
+# del proyecto antes de importar módulos. Creamos un script intermedio que hace esto.
+WRAPPER_SCRIPT = os.path.join(LIA_ROOT, "_lia_startup_wrapper.py")
+WRAPPER_CONTENT = f'''#!/usr/bin/env python3
+import os
+import sys
+import runpy
+
+# Cambiar al directorio raíz del proyecto
+os.chdir({repr(LIA_ROOT)})
+
+# Agregar src/ al path para que las importaciones funcionen
+sys.path.insert(0, os.path.join({repr(LIA_ROOT)}, "src"))
+
+# Ejecutar main.py de forma segura con runpy
+try:
+    runpy.run_path({repr(LIA_MAIN)}, run_name="__main__")
+except Exception as e:
+    # Log cualquier error (aunque sea en una ventana oculta)
+    import traceback
+    log_path = os.path.join({repr(LIA_ROOT)}, "data", "startup_error.log")
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    with open(log_path, "a", encoding="utf-8") as f:
+        f.write(f"Error al iniciar Lia:\\n{{traceback.format_exc()}}\\n\\n")
+    sys.exit(1)
+'''
+
 
 def crear_launcher():
     # Verificar que main.py existe
@@ -46,14 +74,21 @@ def crear_launcher():
         print("Asegúrate de ejecutar este script desde la carpeta del proyecto.")
         return False
 
-    # El script VBS ejecuta pythonw main.py sin mostrar ninguna ventana.
+    # Crear el wrapper script que cambia de directorio correctamente
+    try:
+        with open(WRAPPER_SCRIPT, "w", encoding="utf-8") as f:
+            f.write(WRAPPER_CONTENT)
+    except Exception as e:
+        print(f"ERROR: No se pudo crear el wrapper script: {e}")
+        return False
+
+    # El script VBS ejecuta pythonw wrapper sin mostrar ninguna ventana.
     # windowStyle=0 → oculto.  bWaitOnReturn=False → no espera.
-    # En VBS, "" dentro de una cadena = un " literal; por eso el comando
-    # queda como: "pythonw.exe" "main.py"  (rutas con espacios correctamente comilladas).
+    # El wrapper se encarga de cambiar al directorio correcto antes de ejecutar main.py
     vbs_content = (
         "' Launcher silencioso de Lia\n"
         'Set oShell = CreateObject("WScript.Shell")\n'
-        f'oShell.Run """{PYTHON_EXE}"" ""{LIA_MAIN}""", 0, False\n'
+        f'oShell.Run """{PYTHON_EXE}"" ""{WRAPPER_SCRIPT}""", 0, False\n'
     )
 
     os.makedirs(STARTUP_FOLDER, exist_ok=True)
@@ -66,6 +101,7 @@ def crear_launcher():
     print("=" * 60)
     print(f"  Launcher : {VBS_PATH}")
     print(f"  Python   : {PYTHON_EXE}")
+    print(f"  Wrapper  : {WRAPPER_SCRIPT}")
     print(f"  Main     : {LIA_MAIN}")
     print()
     print("  Lia se iniciará automáticamente la próxima vez")

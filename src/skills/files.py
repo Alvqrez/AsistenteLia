@@ -158,6 +158,7 @@ def _buscar(ctx, match):
 
 class FilesSkill(Skill):
     name = "files"
+    category = "archivos"
 
     def intents(self, ctx):
         return [
@@ -166,6 +167,8 @@ class FilesSkill(Skill):
                 matcher=contains_any(("crea archivo", "crea un archivo",
                                       "nuevo archivo", "crear archivo")),
                 handler=_crear_archivo,
+                description="Crea un archivo (python, txt, ...) en una carpeta",
+                aliases=("crea archivo python hola en documentos",),
                 examples=("crea archivo python hola en documentos",),
             ),
             IntentSpec(
@@ -173,6 +176,8 @@ class FilesSkill(Skill):
                 matcher=contains_any(("crea carpeta", "crea una carpeta",
                                       "nueva carpeta", "crear carpeta")),
                 handler=_crear_carpeta,
+                description="Crea una carpeta nueva donde indiques",
+                aliases=("crea carpeta proyectos en escritorio",),
                 examples=("crea carpeta proyectos en escritorio",),
             ),
             IntentSpec(
@@ -182,6 +187,8 @@ class FilesSkill(Skill):
                                       "abre el escritorio", "abre escritorio",
                                       "abre imágenes", "abre imagenes")),
                 handler=_abrir_carpeta,
+                description="Abre una carpeta conocida en el explorador",
+                aliases=("abre documentos", "abre carpeta proyectos"),
                 examples=("abre documentos", "abre carpeta proyectos"),
             ),
             IntentSpec(
@@ -189,6 +196,8 @@ class FilesSkill(Skill):
                 matcher=contains_any(("busca ", "buscar ", "encuentra ",
                                       "buscar información ", "busca información ")),
                 handler=_buscar,
+                description="Busca en Google o dentro de una carpeta local",
+                aliases=("busca gatos en internet",),
                 examples=("busca gatos en internet", "busca informe en documentos"),
             ),
         ]

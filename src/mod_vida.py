@@ -116,6 +116,14 @@ class VidaTools:
         except Exception as ex:
             logger.error("Error al agregar en '%s': %s", ruta, ex)
 
+    def obtener_metas(self) -> list:
+        """Metas pendientes como lista de strings (para agenda/prioridad)."""
+        return self._leer_items_md(self._metas_path)
+
+    def obtener_proyectos(self) -> list:
+        """Proyectos abiertos como lista de strings (para agenda/prioridad)."""
+        return self._leer_items_md(self._proyectos_path)
+
     def leer_metas(self):
         self._asegurar_archivo(self._metas_path, "# Metas\n\n")
         metas = self._leer_items_md(self._metas_path)

@@ -41,6 +41,7 @@ def _convertir(ctx, m):
 
 class ProductivitySkill(Skill):
     name = "productivity"
+    category = "productividad"
 
     def intents(self, ctx):
         return [
@@ -48,18 +49,31 @@ class ProductivitySkill(Skill):
                        matcher=contains_any(("pomodoro", "temporizador", "cronómetro",
                                              "cronometro", "enciende el pomodoro",
                                              "inicia el pomodoro", "empieza el pomodoro")),
-                       handler=_pomodoro, examples=("pomodoro 30", "temporizador 25 minutos")),
+                       handler=_pomodoro,
+                       description="Inicia un pomodoro de N minutos (25 por defecto)",
+                       aliases=("pomodoro 30",),
+                       examples=("pomodoro 30", "temporizador 25 minutos")),
             IntentSpec(name="prod.hora", priority=700,
                        matcher=contains_any(_SINONIMOS_HORA), handler=_hora,
+                       description="Dice la hora actual",
+                       aliases=("qué hora es",),
                        examples=("qué hora es",)),
             IntentSpec(name="prod.fecha", priority=710,
                        matcher=contains_any(_SINONIMOS_FECHA), handler=_fecha,
+                       description="Dice la fecha de hoy",
+                       aliases=("qué fecha es hoy",),
                        examples=("qué fecha es hoy",)),
             IntentSpec(name="prod.calcular", priority=720,
                        matcher=contains_any(("cuánto es", "cuanto es", "calcula",
                                              "resultado de", "cuánto son", "cuanto son")),
-                       handler=_calcular, examples=("cuánto es 12 por 8",)),
+                       handler=_calcular,
+                       description="Resuelve operaciones matemáticas habladas",
+                       aliases=("cuánto es 12 por 8",),
+                       examples=("cuánto es 12 por 8",)),
             IntentSpec(name="prod.convertir", priority=730,
                        matcher=contains_any(("convierte ", "convertir ")),
-                       handler=_convertir, examples=("convierte 100 dólares a pesos",)),
+                       handler=_convertir,
+                       description="Convierte unidades y monedas",
+                       aliases=("convierte 100 dólares a pesos",),
+                       examples=("convierte 100 dólares a pesos",)),
         ]

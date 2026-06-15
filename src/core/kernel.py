@@ -26,6 +26,7 @@ import speech_recognition as sr
 
 from core.context import AssistantContext
 from core.event_bus import Event, EventBus
+from core.registry import CommandRegistry
 from core.router import IntentRouter
 from core.skill import SkillRegistry
 
@@ -68,6 +69,8 @@ class LiaKernel:
         self.is_active = True
         self._active_lock = threading.Lock()
         self._shutdown_flag = threading.Event()
+        self._resume_event = threading.Event()
+        self._resume_event.set()  # activa al inicio
 
         # ── Infraestructura ──────────────────────────────────────────────
         self.bus = EventBus()
@@ -147,15 +150,24 @@ class LiaKernel:
                 self.detector = None
         self.ctx.detector = self.detector
 
-        # ── Router + skills (sustituye el if/elif) ───────────────────────
+        # ── Router + skills + plugins (sustituye el if/elif) ─────────────
         self.router = IntentRouter(self.ctx)
         self.router.on_unhandled = self._on_unhandled
         self.registry = SkillRegistry()
         self.registry.register_all(self.router, self.ctx, package_name="skills")
+        self.registry.register_all(self.router, self.ctx, package_name="plugins")
+
+        # Catálogo consultable de comandos (help dinámico, búsqueda, validación).
+        self.commands = CommandRegistry(self.router)
+        self.ctx.attach_service("commands", self.commands)
+        problemas = self.commands.validate()
+        if problemas:
+            print(f"   ⚠ Validación de comandos: {len(problemas)} advertencia(s) "
+                  "(detalle en data/lia.log)")
 
         # ── Arranque ─────────────────────────────────────────────────────
         from skills import _help
-        _help.generar_txt_comandos()
+        _help.generar_txt_comandos(self.commands)
         self.ctx.say(self.persona.saludo_inicio())
         mod_sonidos.sonido_inicio()
 
@@ -248,9 +260,12 @@ class LiaKernel:
     def pause(self) -> None:
         with self._active_lock:
             self.is_active = False
-        # NO desactivar el detector al pausar: necesita seguir detectando
-        # aplausos para poder reactivar con 3 aplausos. El flag is_active
-        # del kernel (no detector._active) es el que gobierna el comportamiento.
+        self._resume_event.clear()
+        # Desactiva el análisis de audio del detector; el stream de sounddevice
+        # sigue abierto pero el callback sale inmediatamente sin hacer FFT.
+        # Reactivación exclusivamente via tray o voz (cuando se reanude).
+        if self.detector is not None:
+            self.detector.set_active(False)
         self.ctx.set_status("pausada")
 
     def resume(self) -> bool:
@@ -258,6 +273,9 @@ class LiaKernel:
         with self._active_lock:
             estaba_en_pausa = not self.is_active
             self.is_active = True
+        if self.detector is not None:
+            self.detector.set_active(True)
+        self._resume_event.set()
         if estaba_en_pausa:
             self.ctx.set_status("activa")
         return estaba_en_pausa
@@ -318,31 +336,13 @@ class LiaKernel:
             print(f"   [STT] Umbral de energía: {self.recognizer.energy_threshold:.0f}  (dynamic=ON)")
             print("   [STT] Escuchando... di 'Lia' seguido de tu comando")
 
-            _REACTIVACION = (
-                "ya regresé", "ya regrese", "ya volví", "ya volvi",
-                "estoy de vuelta", "aquí estoy", "aqui estoy",
-                "reanuda", "reanudar", "continúa", "continua",
-                "actívate", "activar", "activa",
-            )
-
             while not self._shutdown_flag.is_set():
 
                 if not self.active():
-                    # En pausa: escuchar brevemente por si el usuario dice una
-                    # palabra de reactivación. Si no hay audio en 3s, reintentar.
-                    try:
-                        audio = self.recognizer.listen(src, timeout=3.0,
-                                                       phrase_time_limit=5)
-                        if self.detector is not None:
-                            self.detector.notificar_voz_detectada(1.5)
-                        cmd = self.recognizer.recognize_google(
-                            audio, language="es-MX").lower()
-                        limpio = self._limpiar(cmd)
-                        if any(w in limpio for w in _REACTIVACION):
-                            self.resume()
-                            self.ctx.say(self.persona.reactivacion())
-                    except Exception:
-                        pass  # timeout o no speech — normal en pausa
+                    # En pausa: dormir sin capturar audio. El bucle despierta
+                    # cuando resume() dispara _resume_event o cada 60s para
+                    # re-chequear el flag de shutdown.
+                    self._resume_event.wait(timeout=60)
                     continue
 
                 try:

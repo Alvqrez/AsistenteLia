@@ -1,58 +1,337 @@
 +==============================================================+
-|                   ASISTENTE LIA  v5.0.0                      |
+|             ASISTENTE LIA  v5.1  —  123 comandos             |
 +==============================================================+
-|  APLAUSOS                                                     |
-|    1 aplauso   ->  Modo Estudio  (ChatGPT + WhatsApp)        |
-|    2 aplausos  ->  Modo Codigo   (VS Code + GitHub + Spotify)|
-|    3 aplausos  ->  Modo Juego    (Discord + TimerResolution) |
-|                                                               |
-|  COMANDOS DE VOZ  (di "Lia, ...")                             |
-|  -- Modos --------------------------------------------------- |
-|    "a estudiar" / "modo estudio" / "voy a trabajar"          |
-|    "a programar" / "modo código" / "quiero codear"           |
-|    "a jugar" / "gaming" / "modo juego"                       |
-|  -- Rutina -------------------------------------------------- |
-|    "inicio" / "buenos días" / "empecemos"                    |
-|  -- Voz y control ------------------------------------------ |
-|    "silencio" / "cállate" / "mute" / "habla"                 |
-|    "pausate" / "ya regresé" / "apagate" / "cancela"          |
-|  -- Aplicaciones ------------------------------------------- |
-|    "abre [app]" / "cierra todo"                              |
-|  -- Archivos y carpetas ------------------------------------ |
-|    "crea archivo python [nombre] en [carpeta]"               |
-|    "crea carpeta [nombre] en [carpeta]"                      |
-|    "abre carpeta [nombre]" / "busca [término] en [carpeta]"  |
-|  -- Pendientes / Notas ------------------------------------- |
-|    "pendientes" / "anota [tarea]" / "tarea X lista"          |
-|    "nota [clave] [texto]" / "recuerda nota [clave]"          |
-|  -- Dev ---------------------------------------------------- |
-|    "crea proyecto React en [carpeta]"                        |
-|    "git status / push / pull / log / commit [msg]"           |
-|    "nueva rama [x]" / "cambia rama [x]" / "clona [url]"       |
-|    "abre vscode en [carpeta]" / "docs python" / "mdn"        |
-|  -- Productividad ------------------------------------------ |
-|    "pomodoro [N]" / "recuerda [X] en [N] minutos"            |
-|    "qué hora" / "qué fecha" / "calcula [op]"                 |
-|    "convierte [N] [unidad] a [unidad]"                       |
-|  -- Clima e internet --------------------------------------- |
-|    "clima" / "busca [X]" / "youtube [X]" / "wikipedia [X]"   |
-|    "maps [lugar]" / "mi ip" / "noticias" / "traduce [texto]" |
-|  -- Sistema ------------------------------------------------ |
-|    "sistema" / "disco" / "procesos pesados"                  |
-|    "bloquea" / "apaga la pc" / "cancela apagado"             |
-|  -- Modo Enfoque ------------------------------------------- |
-|    "modo enfoque [N]" / "desbloquea sitios"                  |
-|  -- Recordatorios ------------------------------------------ |
-|    "recuerda [X] mañana / el 15 de julio"                    |
-|    "mis recordatorios" / "recordatorio completado [X]"       |
-|  -- Metas / Hábitos / Proyectos ----------------------------- |
-|    "mis metas" / "agrega meta [texto]"                       |
-|    "mis hábitos" / "hice el hábito X"                        |
-|    "mis proyectos" / "resumen personal"                      |
-|  -- Contexto de trabajo ------------------------------------- |
-|    "abre el proyecto [nombre]" / "ejecuta"                    |
-|    "qué estoy haciendo" / "abre/cierra lo último" / "abortar"|
-|  -- Misc --------------------------------------------------- |
-|    "dashboard" / "configuracion" / "resumen" / "comandos"    |
-|    "gracias" / "recalibra"                                   |
+|  APLAUSOS                                                    |
+|    1 aplauso   ->  Modo Estudio                              |
+|    2 aplausos  ->  Modo Codigo                               |
+|    3 aplausos  ->  Modo Juego (o reactivar si esta en pausa) |
+|                                                              |
+|  COMANDOS DE VOZ  (di "Lia, ...")                            |
+|                                                              |
+|  -- APLICACIONES ------------------------------------------  |
+|  "abre spotify"                                              |
+|      Abre una aplicación o sitio web                         |
+|  "cierra spotify"                                            |
+|      Cierra una aplicación por su nombre                     |
+|  "cierra todo"                                               |
+|      Cierra navegadores y apps abiertas (pide confirmación)  |
+|                                                              |
+|  -- ARCHIVOS ----------------------------------------------  |
+|  "abre documentos"                                           |
+|      Abre una carpeta conocida en el explorador              |
+|      tambien: "abre carpeta proyectos"                       |
+|  "busca gatos en internet"                                   |
+|      Busca en Google o dentro de una carpeta local           |
+|  "crea archivo python hola en documentos"                    |
+|      Crea un archivo (python, txt, ...) en una carpeta       |
+|  "crea carpeta proyectos en escritorio"                      |
+|      Crea una carpeta nueva donde indiques                   |
+|                                                              |
+|  -- AUTOMATIZACION ----------------------------------------  |
+|  "abre entorno flutter"                                      |
+|      Abre VS Code, Android Studio y el emulador Android      |
+|  "abre mi entorno de trabajo"                                |
+|      Abre VS Code, Spotify, GitHub y la terminal de una vez  |
+|  "abre entorno web"                                          |
+|      Abre VS Code, Chrome y localhost para desarrollo web    |
+|                                                              |
+|  -- CONTEXTO ----------------------------------------------  |
+|  "abortar"                                                   |
+|      Cierra todo lo que Lia abrió en esta sesión             |
+|  "abre el proyecto lia"                                      |
+|      Abre un proyecto conocido y lo deja activo              |
+|  "abre lo último"                                            |
+|      Reabre lo último que cerraste                           |
+|  "cierra lo último"                                          |
+|      Cierra lo último que abriste                            |
+|  "ejecuta"                                                   |
+|      Ejecuta el proyecto activo                              |
+|      tambien: "corre el proyecto"                            |
+|  "qué estoy haciendo"                                        |
+|      Dice en qué proyecto estás trabajando                   |
+|                                                              |
+|  -- CONTROL -----------------------------------------------  |
+|  "apagate"                                                   |
+|      Apaga el asistente por completo                         |
+|      tambien: "hasta luego"                                  |
+|  "ayuda"                                                     |
+|      Muestra todos los comandos disponibles (lista generada en vivo)|
+|      tambien: "comandos" / "qué puedes hacer"                |
+|  "busca comando pomodoro"                                    |
+|      Busca un comando por nombre o tema en el catálogo       |
+|  "recalibra"                                                 |
+|      Calibra el detector de aplausos con tu micrófono        |
+|      tambien: "calibrar aplausos"                            |
+|  "cancela"                                                   |
+|      Cancela la acción en curso                              |
+|  "configuración"                                             |
+|      Abre el asistente de configuración                      |
+|      tambien: "ajustes"                                      |
+|  "dashboard"                                                 |
+|      Trae al frente el panel principal de Lia                |
+|      tambien: "abre el panel"                                |
+|  "gracias"                                                   |
+|      Cierra el menú de comandos y responde con cortesía      |
+|  "habla"                                                     |
+|      Reactiva la voz de Lia                                  |
+|      tambien: "activa voz"                                   |
+|  "pausate"                                                   |
+|      Pausa la escucha (reactivar con 'ya regresé' o 3 aplausos)|
+|      tambien: "descansa"                                     |
+|  "ya regresé"                                                |
+|      Reactiva a Lia después de una pausa                     |
+|      tambien: "estoy de vuelta"                              |
+|  "silencio"                                                  |
+|      Silencia la voz de Lia (sigue escuchando)               |
+|      tambien: "mute"                                         |
+|                                                              |
+|  -- DESARROLLO --------------------------------------------  |
+|  "cambia rama main"                                          |
+|      Cambia a otra rama (checkout)                           |
+|  "abre la carpeta del proyecto"                              |
+|      Abre la carpeta del proyecto activo en el explorador    |
+|  "clona un repositorio"                                      |
+|      Clona un repositorio desde una URL                      |
+|  "docs python"                                               |
+|      Abre la documentación oficial de Python                 |
+|  "ejecuta npm run dev"                                       |
+|      Ejecuta un comando de desarrollo en el proyecto activo  |
+|      tambien: "ejecuta flutter run"                          |
+|  "haz commit"                                                |
+|      Crea un commit con el mensaje que digas                 |
+|  "git log"                                                   |
+|      Lee los últimos commits del repositorio                 |
+|      tambien: "últimos commits"                              |
+|  "git pull"                                                  |
+|      Trae los cambios del remoto (pull)                      |
+|      tambien: "baja los cambios"                             |
+|  "git push"                                                  |
+|      Hace push de los commits al remoto                      |
+|      tambien: "sube los cambios"                             |
+|  "git status"                                                |
+|      Muestra el estado del repositorio Git actual            |
+|      tambien: "estado del repo"                              |
+|  "mdn"                                                       |
+|      Abre MDN Web Docs                                       |
+|  "nueva rama feature-x"                                      |
+|      Crea una rama nueva y cambia a ella                     |
+|  "abre mi proyecto actual"                                   |
+|      Abre el proyecto activo en VS Code                      |
+|  "crea proyecto react en documentos"                         |
+|      Crea un proyecto React con Vite                         |
+|  "mis ramas"                                                 |
+|      Lista las ramas del repositorio                         |
+|  "stackoverflow"                                             |
+|      Abre Stack Overflow                                     |
+|  "abre vscode en mi-proyecto"                                |
+|      Abre VS Code en una carpeta concreta                    |
+|                                                              |
+|  -- ENFOQUE -----------------------------------------------  |
+|  "modo enfoque 50"                                           |
+|      Bloquea sitios distractores durante N minutos           |
+|  "desbloquea sitios"                                         |
+|      Desbloquea los sitios y termina el enfoque              |
+|                                                              |
+|  -- INTERNET ----------------------------------------------  |
+|  "clima"                                                     |
+|      Dice el clima actual de tu ciudad                       |
+|      tambien: "va a llover"                                  |
+|  "hay internet"                                              |
+|      Verifica si hay conexión a internet                     |
+|  "mi ip"                                                     |
+|      Dice tu dirección IP pública                            |
+|  "abre maps"                                                 |
+|      Abre Google Maps, opcionalmente en un lugar             |
+|      tambien: "maps madrid"                                  |
+|  "noticias"                                                  |
+|      Abre las noticias del día                               |
+|  "buenos días"                                               |
+|      Rutina de inicio del día: saludo, clima y pendientes    |
+|      tambien: "inicio"                                       |
+|  "traduce hola al inglés"                                    |
+|      Traduce un texto en Google Translate                    |
+|  "wikipedia einstein"                                        |
+|      Busca un tema en Wikipedia                              |
+|  "youtube lofi"                                              |
+|      Busca un video en YouTube                               |
+|                                                              |
+|  -- MUSICA ------------------------------------------------  |
+|  "canción anterior"                                          |
+|      Vuelve a la canción anterior                            |
+|  "baja volumen"                                              |
+|      Baja el volumen del sistema                             |
+|      tambien: "baja el volumen"                              |
+|  "qué canción está sonando"                                  |
+|      Dice qué canción está sonando en Spotify y quién la canta|
+|      tambien: "quién canta"                                  |
+|  "pausa la música"                                           |
+|      Pausa la música que está sonando                        |
+|      tambien: "pausa spotify"                                |
+|  "reproduce música"                                          |
+|      Reproduce o reanuda la música                           |
+|      tambien: "pon música"                                   |
+|  "siguiente canción"                                         |
+|      Salta a la siguiente canción                            |
+|  "sube volumen"                                              |
+|      Sube el volumen del sistema                             |
+|      tambien: "sube el volumen"                              |
+|  "volumen al 50"                                             |
+|      Fija el volumen del sistema a un porcentaje             |
+|                                                              |
+|  -- PRODUCTIVIDAD -----------------------------------------  |
+|  "agenda mi día"                                             |
+|      Resume tu día: recordatorios, exámenes, pendientes y metas|
+|      tambien: "plan del día"                                 |
+|  "cuánto es 12 por 8"                                        |
+|      Resuelve operaciones matemáticas habladas               |
+|  "convierte 100 dólares a pesos"                             |
+|      Convierte unidades y monedas                            |
+|  "qué fecha es hoy"                                          |
+|      Dice la fecha de hoy                                    |
+|  "qué hora es"                                               |
+|      Dice la hora actual                                     |
+|  "modo profundo"                                             |
+|      90 minutos de trabajo profundo: bloquea sitios distractores|
+|      tambien: "inicia modo profundo"                         |
+|  "recuérdame mis objetivos"                                  |
+|      Te recuerda tus objetivos (metas activas)               |
+|      tambien: "mis objetivos"                                |
+|  "pomodoro 30"                                               |
+|      Inicia un pomodoro de N minutos (25 por defecto)        |
+|  "cancela pomodoro"                                          |
+|      Cancela el pomodoro en curso                            |
+|      tambien: "cancela el pomodoro"                          |
+|  "pausa pomodoro"                                            |
+|      Pausa el pomodoro en curso                              |
+|      tambien: "pausa el pomodoro"                            |
+|  "reanuda pomodoro"                                          |
+|      Reanuda un pomodoro pausado                             |
+|  "cuál es mi prioridad"                                      |
+|      Te dice en qué enfocarte ahora (exámenes > recordatorios > pendientes > metas)|
+|      tambien: "qué debería hacer hoy" / "en qué debería enfocarme"|
+|                                                              |
+|  -- PROYECTOS ---------------------------------------------  |
+|  "proyecto activo"                                           |
+|      Dice cuál es el proyecto activo de trabajo              |
+|      tambien: "cuál es el proyecto activo"                   |
+|  "agrega idea app de recetas"                                |
+|      Guarda una idea con su fecha                            |
+|      tambien: "tengo una idea"                               |
+|  "cambia proyecto activo a lia"                              |
+|      Cambia el proyecto activo sin abrir nada                |
+|  "lista proyectos"                                           |
+|      Lista tus proyectos personales                          |
+|  "lista ideas"                                               |
+|      Lee tus ideas guardadas (las más recientes primero)     |
+|      tambien: "mis ideas" / "recuérdame mis ideas"           |
+|                                                              |
+|  -- RECORDATORIOS -----------------------------------------  |
+|  "recordatorio completado pagar luz"                         |
+|      Marca un recordatorio como completado                   |
+|  "recuerda pagar la luz mañana"                              |
+|      Recordatorio para una fecha (mañana, el 15 de julio...) |
+|  "mis recordatorios"                                         |
+|      Lista tus recordatorios pendientes                      |
+|  "recuerda llamar a ana en 10 minutos"                       |
+|      Recordatorio en N minutos (persiste aunque reinicies)   |
+|                                                              |
+|  -- RESUMEN -----------------------------------------------  |
+|  "resumen"                                                   |
+|      Resume las actividades que hiciste hoy                  |
+|      tambien: "qué hice hoy"                                 |
+|                                                              |
+|  -- SISTEMA -----------------------------------------------  |
+|  "uso de cpu"                                                |
+|      Porcentaje de uso del CPU en este momento               |
+|  "salud del disco"                                           |
+|      Espacio libre y estado SMART del disco                  |
+|  "optimiza memoria"                                          |
+|      Libera RAM recortando el working set de los procesos    |
+|      tambien: "libera memoria"                               |
+|  "uso de ram"                                                |
+|      Uso y disponibilidad de RAM                             |
+|  "temperatura cpu"                                           |
+|      Temperatura del CPU (si el equipo la expone)            |
+|  "temperatura gpu"                                           |
+|      Temperatura de la GPU (NVIDIA vía nvidia-smi)           |
+|  "limpia temporales"                                         |
+|      Borra los archivos temporales de Windows (pide confirmación)|
+|  "apaga la pc"                                               |
+|      Apaga la PC en 60 segundos (pide confirmación)          |
+|  "bloquea la pc"                                             |
+|      Bloquea la sesión de Windows                            |
+|  "cancela apagado"                                           |
+|      Cancela un apagado programado                           |
+|  "disco"                                                     |
+|      Espacio libre en disco                                  |
+|      tambien: "cuánto espacio libre"                         |
+|  "sistema"                                                   |
+|      Estado del sistema: CPU, RAM y recursos                 |
+|      tambien: "cómo está la pc"                              |
+|  "a programar"                                               |
+|      Modo programación: VS Code, GitHub y Spotify            |
+|      tambien: "modo código"                                  |
+|  "a estudiar"                                                |
+|      Modo estudio: ChatGPT y WhatsApp                        |
+|      tambien: "modo estudio"                                 |
+|  "a jugar"                                                   |
+|      Modo juego: Discord y optimización                      |
+|      tambien: "modo juego"                                   |
+|  "procesos pesados"                                          |
+|      Lista los procesos que más consumen                     |
+|                                                              |
+|  -- TAREAS ------------------------------------------------  |
+|  "anota comprar pan"                                         |
+|      Anota un pendiente nuevo                                |
+|  "tarea comprar pan lista"                                   |
+|      Marca una tarea como completada                         |
+|  "recuerda nota wifi"                                        |
+|      Lee una nota guardada por su clave                      |
+|  "mis notas"                                                 |
+|      Lista todas tus notas guardadas                         |
+|  "nota wifi clave1234"                                       |
+|      Guarda una nota clave-valor                             |
+|  "pendientes"                                                |
+|      Lee tus pendientes (sincronizados con Obsidian)         |
+|      tambien: "mis tareas"                                   |
+|                                                              |
+|  -- UNIVERSIDAD -------------------------------------------  |
+|  "agrega examen de cálculo el 15 de julio"                   |
+|      Anota un examen con su fecha                            |
+|  "cuánto falta para el examen"                               |
+|      Dice cuánto falta para tu examen (el más cercano o por materia)|
+|  "próximos exámenes"                                         |
+|      Lista tus próximos exámenes con días restantes          |
+|      tambien: "mis exámenes"                                 |
+|                                                              |
+|  -- UTILIDADES --------------------------------------------  |
+|  "apaga pantalla"                                            |
+|      Apaga el monitor (se enciende al mover el mouse)        |
+|      tambien: "apaga la pantalla"                            |
+|  "genera contraseña segura"                                  |
+|      Genera una contraseña segura y la copia al portapapeles |
+|      tambien: "genera contraseña de 20 caracteres"           |
+|                                                              |
+|  -- VIDA --------------------------------------------------  |
+|  "agrega hábito leer"                                        |
+|      Agrega un hábito a seguir                               |
+|  "agrega meta correr 5k"                                     |
+|      Agrega una meta personal                                |
+|  "agrega proyecto portafolio"                                |
+|      Agrega un proyecto personal                             |
+|  "meta lista correr 5k"                                      |
+|      Marca una meta como cumplida                            |
+|  "proyecto terminado portafolio"                             |
+|      Marca un proyecto como terminado                        |
+|  "mis hábitos"                                               |
+|      Revisa el estado de tus hábitos                         |
+|  "hice el hábito leer"                                       |
+|      Marca un hábito como hecho hoy                          |
+|  "mis metas"                                                 |
+|      Lee tus metas personales                                |
+|  "mis proyectos"                                             |
+|      Estado de tus proyectos personales                      |
+|  "resumen personal"                                          |
+|      Resumen de tus metas, hábitos y proyectos               |
+|      tambien: "cómo estoy"                                   |
 +==============================================================+

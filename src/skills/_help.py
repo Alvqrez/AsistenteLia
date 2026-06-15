@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """
-_help.py — Texto del menú de comandos y utilidades para abrirlo/cerrarlo.
+_help.py — Generación DINÁMICA del menú de comandos + utilidades para abrirlo.
 
-Helper compartido por la skill de control de voz. Extraído del antiguo
-LiaAssistant para que la generación del `lia_comandos.txt` no viva en el núcleo.
+El menú ya no es un texto hardcodeado: se construye desde el CommandRegistry,
+agrupado por categoría, con los aliases y ejemplos que cada IntentSpec declaró.
+Agregar un comando nuevo (skill o plugin) lo hace aparecer aquí solo.
+
+Solo la sección de APLAUSOS es estática: describe hardware/kernel, no comandos.
 """
 
 import logging
@@ -21,84 +24,73 @@ _DATA_DIR = os.path.join(_ROOT_DIR, "data")
 os.makedirs(_DATA_DIR, exist_ok=True)
 COMANDOS_TXT_PATH = os.path.join(_DATA_DIR, "lia_comandos.txt")
 
-MENU_TEXTO = """\
-+==============================================================+
-|                   ASISTENTE LIA  v5.0.0                      |
-+==============================================================+
-|  APLAUSOS                                                     |
-|    1 aplauso   ->  Modo Estudio  (ChatGPT + WhatsApp)        |
-|    2 aplausos  ->  Modo Codigo   (VS Code + GitHub + Spotify)|
-|    3 aplausos  ->  Modo Juego    (Discord + TimerResolution) |
-|                                                               |
-|  COMANDOS DE VOZ  (di "Lia, ...")                             |
-|  -- Modos --------------------------------------------------- |
-|    "a estudiar" / "modo estudio" / "voy a trabajar"          |
-|    "a programar" / "modo código" / "quiero codear"           |
-|    "a jugar" / "gaming" / "modo juego"                       |
-|  -- Rutina -------------------------------------------------- |
-|    "inicio" / "buenos días" / "empecemos"                    |
-|  -- Voz y control ------------------------------------------ |
-|    "silencio" / "cállate" / "mute" / "habla"                 |
-|    "pausate" / "ya regresé" / "apagate" / "cancela"          |
-|  -- Aplicaciones ------------------------------------------- |
-|    "abre [app]" / "cierra todo"                              |
-|  -- Archivos y carpetas ------------------------------------ |
-|    "crea archivo python [nombre] en [carpeta]"               |
-|    "crea carpeta [nombre] en [carpeta]"                      |
-|    "abre carpeta [nombre]" / "busca [término] en [carpeta]"  |
-|  -- Pendientes / Notas ------------------------------------- |
-|    "pendientes" / "anota [tarea]" / "tarea X lista"          |
-|    "nota [clave] [texto]" / "recuerda nota [clave]"          |
-|  -- Dev ---------------------------------------------------- |
-|    "crea proyecto React en [carpeta]"                        |
-|    "git status / push / pull / log / commit [msg]"           |
-|    "nueva rama [x]" / "cambia rama [x]" / "clona [url]"       |
-|    "abre vscode en [carpeta]" / "docs python" / "mdn"        |
-|  -- Productividad ------------------------------------------ |
-|    "pomodoro [N]" / "recuerda [X] en [N] minutos"            |
-|    "qué hora" / "qué fecha" / "calcula [op]"                 |
-|    "convierte [N] [unidad] a [unidad]"                       |
-|  -- Clima e internet --------------------------------------- |
-|    "clima" / "busca [X]" / "youtube [X]" / "wikipedia [X]"   |
-|    "maps [lugar]" / "mi ip" / "noticias" / "traduce [texto]" |
-|  -- Sistema ------------------------------------------------ |
-|    "sistema" / "disco" / "procesos pesados"                  |
-|    "bloquea" / "apaga la pc" / "cancela apagado"             |
-|  -- Modo Enfoque ------------------------------------------- |
-|    "modo enfoque [N]" / "desbloquea sitios"                  |
-|  -- Recordatorios ------------------------------------------ |
-|    "recuerda [X] mañana / el 15 de julio"                    |
-|    "mis recordatorios" / "recordatorio completado [X]"       |
-|  -- Metas / Hábitos / Proyectos ----------------------------- |
-|    "mis metas" / "agrega meta [texto]"                       |
-|    "mis hábitos" / "hice el hábito X"                        |
-|    "mis proyectos" / "resumen personal"                      |
-|  -- Contexto de trabajo ------------------------------------- |
-|    "abre el proyecto [nombre]" / "ejecuta"                    |
-|    "qué estoy haciendo" / "abre/cierra lo último" / "abortar"|
-|  -- Misc --------------------------------------------------- |
-|    "dashboard" / "configuracion" / "resumen" / "comandos"    |
-|    "gracias" / "recalibra"                                   |
-+==============================================================+
-"""
+_ANCHO = 64
+
+_LINEAS_APLAUSOS = (
+    "APLAUSOS",
+    "  1 aplauso   ->  Modo Estudio",
+    "  2 aplausos  ->  Modo Codigo",
+    "  3 aplausos  ->  Modo Juego (o reactivar si esta en pausa)",
+)
 
 
-def generar_txt_comandos() -> None:
-    """Escribe el menú a disco de forma atómica."""
+def _linea(texto: str = "") -> str:
+    return f"|  {texto:<{_ANCHO - 4}}|"
+
+
+def build_menu(registry) -> str:
+    """Construye el menú completo desde el CommandRegistry (cero hardcodeo)."""
+    grupos = registry.by_category()
+    total = len(registry.specs)
+
+    out = ["+" + "=" * (_ANCHO - 2) + "+"]
+    titulo = f"ASISTENTE LIA  v5.1  —  {total} comandos"
+    out.append(f"|{titulo:^{_ANCHO - 2}}|")
+    out.append("+" + "=" * (_ANCHO - 2) + "+")
+    out.extend(_linea(t) for t in _LINEAS_APLAUSOS)
+    out.append(_linea())
+    out.append(_linea('COMANDOS DE VOZ  (di "Lia, ...")'))
+
+    for categoria, specs in grupos.items():
+        out.append(_linea())
+        out.append(_linea(f"-- {categoria.upper()} " + "-" * max(0, _ANCHO - 10 - len(categoria))))
+        for s in specs:
+            frase = s.aliases[0] if s.aliases else (s.examples[0] if s.examples else s.name)
+            desc = s.description or s.name
+            out.append(_linea(f'"{frase}"'))
+            out.append(_linea(f"    {desc}"))
+            extras = [a for a in s.aliases[1:3]]
+            if extras:
+                out.append(_linea("    tambien: " + " / ".join(f'"{a}"' for a in extras)))
+    out.append("+" + "=" * (_ANCHO - 2) + "+")
+    return "\n".join(out) + "\n"
+
+
+def resumen_hablado(registry, max_categorias: int = 12) -> str:
+    """Resumen corto para decirlo por voz: cuántos comandos y qué categorías."""
+    grupos = registry.by_category()
+    cats = ", ".join(list(grupos.keys())[:max_categorias])
+    return (f"Tengo {len(registry.specs)} comandos en estas áreas: {cats}. "
+            "Te dejo la lista completa en pantalla.")
+
+
+def generar_txt_comandos(registry) -> None:
+    """Escribe el menú generado a disco de forma atómica."""
     try:
+        contenido = build_menu(registry)
         dir_ = os.path.dirname(COMANDOS_TXT_PATH) or "."
         fd, tmp = tempfile.mkstemp(dir=dir_, suffix=".tmp")
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(MENU_TEXTO)
+            f.write(contenido)
         os.replace(tmp, COMANDOS_TXT_PATH)
     except Exception as ex:
         logger.warning("No se pudo crear lia_comandos.txt: %s", ex)
 
 
-def abrir_txt_comandos() -> None:
+def abrir_txt_comandos(registry=None) -> None:
     try:
-        if not os.path.exists(COMANDOS_TXT_PATH):
-            generar_txt_comandos()
+        if registry is not None:
+            generar_txt_comandos(registry)  # siempre fresco
         if platform.system() == "Windows":
             subprocess.Popen(["notepad.exe", COMANDOS_TXT_PATH])
         else:

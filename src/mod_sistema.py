@@ -61,6 +61,12 @@ class SystemTools:
         "photoshop":                 r"C:\Program Files\Adobe\Adobe Photoshop 2024\Photoshop.exe",
         "figma":                     r"%LOCALAPPDATA%\Figma\Figma.exe",
         "postman":                   r"%LOCALAPPDATA%\Postman\Postman.exe",
+        "powershell":                "powershell.exe",
+        "docker":                    r"C:\Program Files\Docker\Docker\Docker Desktop.exe",
+        "docker desktop":            r"C:\Program Files\Docker\Docker\Docker Desktop.exe",
+        "android studio":            r"C:\Program Files\Android\Android Studio\bin\studio64.exe",
+        "git bash":                  r"C:\Program Files\Git\git-bash.exe",
+        "gitbash":                   r"C:\Program Files\Git\git-bash.exe",
     }
 
     # Rutas alternativas para apps con ubicaciones variables.
@@ -93,6 +99,15 @@ class SystemTools:
         ],
         "terminal": [
             r"%LOCALAPPDATA%\Microsoft\WindowsApps\wt.exe",
+        ],
+        "powershell": [
+            r"C:\Program Files\PowerShell\7\pwsh.exe",
+        ],
+        "android studio": [
+            r"%LOCALAPPDATA%\Programs\Android Studio\bin\studio64.exe",
+        ],
+        "git bash": [
+            r"%PROGRAMFILES(X86)%\Git\git-bash.exe",
         ],
     }
 

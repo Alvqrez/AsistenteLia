@@ -18,15 +18,22 @@ def _desactivar(ctx, m):
 
 class FocusSkill(Skill):
     name = "focus"
+    category = "enfoque"
 
     def intents(self, ctx):
         return [
             IntentSpec(name="focus.activar", priority=740,
                        matcher=contains_any(("modo enfoque", "modo focus",
                                              "activa el enfoque", "activa focus")),
-                       handler=_activar, examples=("modo enfoque 50",)),
+                       handler=_activar,
+                       description="Bloquea sitios distractores durante N minutos",
+                       aliases=("modo enfoque 50",),
+                       examples=("modo enfoque 50",)),
             IntentSpec(name="focus.desactivar", priority=750,
                        matcher=contains_any(("termina enfoque", "fin enfoque",
                                              "desbloquea sitios", "desactiva enfoque")),
-                       handler=_desactivar, examples=("desbloquea sitios",)),
+                       handler=_desactivar,
+                       description="Desbloquea los sitios y termina el enfoque",
+                       aliases=("desbloquea sitios",),
+                       examples=("desbloquea sitios",)),
         ]

@@ -33,7 +33,9 @@ class Event:
     SPEAK = "speak"
     ACTIVITY = "activity"
     STATUS = "status"
-    INTENT = "intent"
+    INTENT = "intent"                       # se resolvió una intención (antes de ejecutar)
+    COMMAND_EXECUTED = "command_executed"   # el handler terminó bien (payload: dict)
+    COMMAND_FAILED = "command_failed"       # el handler lanzó excepción (payload: dict)
     LISTENING = "listening"
     ERROR = "error"
 

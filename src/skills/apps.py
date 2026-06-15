@@ -79,6 +79,7 @@ def _cerrar_todo(ctx, match):
 
 class AppsSkill(Skill):
     name = "apps"
+    category = "aplicaciones"
 
     def intents(self, ctx):
         return [
@@ -86,6 +87,8 @@ class AppsSkill(Skill):
                 name="apps.abrir", priority=270,
                 matcher=after_trigger(("abre ", "abrir ")),
                 handler=_abrir,
+                description="Abre una aplicación o sitio web",
+                aliases=("abre spotify",),
                 examples=("abre spotify", "abre youtube", "abre chrome",
                           "abre amazon en internet"),
             ),
@@ -97,6 +100,8 @@ class AppsSkill(Skill):
                     ("todo", "eso"),
                 ),
                 handler=_cerrar_app,
+                description="Cierra una aplicación por su nombre",
+                aliases=("cierra spotify",),
                 examples=("cierra spotify", "cierra chrome", "cerrar discord",
                           "cierra el vscode"),
             ),
@@ -104,6 +109,8 @@ class AppsSkill(Skill):
                 name="apps.cerrar_todo", priority=280,
                 matcher=contains_any(("cierra todo", "cerrar todo", "ciérralo todo")),
                 handler=_cerrar_todo,
+                description="Cierra navegadores y apps abiertas (pide confirmación)",
+                aliases=("cierra todo",),
                 examples=("cierra todo",),
             ),
         ]

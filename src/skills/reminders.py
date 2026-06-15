@@ -86,6 +86,7 @@ def _completar(ctx, m):
 
 class RemindersSkill(Skill):
     name = "reminders"
+    category = "recordatorios"
 
     def intents(self, ctx):
         return [
@@ -93,19 +94,29 @@ class RemindersSkill(Skill):
                        matcher=all_of(contains_any(("recuerda", "recuérdame", "recuerdame")),
                                       contains_any(("minuto",))),
                        handler=_recordar_minutos,
+                       description="Recordatorio en N minutos (persiste aunque reinicies)",
+                       aliases=("recuerda llamar a ana en 10 minutos",),
                        examples=("recuerda llamar a Ana en 10 minutos",)),
             IntentSpec(name="rem.fecha", priority=370,
                        matcher=contains_any(("recuerda", "recuérdame", "recuerdame")),
                        handler=_recordar_fecha,
+                       description="Recordatorio para una fecha (mañana, el 15 de julio...)",
+                       aliases=("recuerda pagar la luz mañana",),
                        examples=("recuerda pagar la luz el 15 de julio",
                                  "recuérdame la cita mañana")),
             IntentSpec(name="rem.listar", priority=380,
                        matcher=contains_any(("mis recordatorios", "lista de recordatorios",
                                              "qué recordatorios tengo", "que recordatorios tengo",
                                              "recordatorios pendientes")),
-                       handler=_listar, examples=("mis recordatorios",)),
+                       handler=_listar,
+                       description="Lista tus recordatorios pendientes",
+                       aliases=("mis recordatorios",),
+                       examples=("mis recordatorios",)),
             IntentSpec(name="rem.completar", priority=390,
                        matcher=contains_any(("recordatorio completado ", "marcar recordatorio ",
                                              "completar recordatorio ")),
-                       handler=_completar, examples=("recordatorio completado pagar luz",)),
+                       handler=_completar,
+                       description="Marca un recordatorio como completado",
+                       aliases=("recordatorio completado pagar luz",),
+                       examples=("recordatorio completado pagar luz",)),
         ]

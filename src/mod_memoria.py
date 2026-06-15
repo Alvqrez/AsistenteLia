@@ -36,6 +36,9 @@ class MemoryTools:
     def __init__(self, parent_lia):
         self.lia              = parent_lia
         self.pomodoro_thread  = None
+        self._pomodoro_cancelado = threading.Event()
+        self._pomodoro_pausado = threading.Event()
+        self._pomodoro_restante = 0
         self._shutdown_flag   = None
         self._pendientes_lock = threading.Lock()  # protege lectura/escritura de Pendientes.md
 
@@ -107,6 +110,23 @@ class MemoryTools:
         except Exception as ex:
             logger.error("Error al agregar pendiente: %s", ex)
             self.lia.hablar(self.lia.persona.error_generico("guardar el pendiente"))
+
+    def obtener_pendientes(self) -> list:
+        """Devuelve los pendientes abiertos como lista de strings (para agenda/prioridad)."""
+        try:
+            with self._pendientes_lock:
+                if not os.path.exists(self._pendientes_path):
+                    return []
+                items = []
+                with open(self._pendientes_path, "r", encoding="utf-8-sig") as f:
+                    for linea in f:
+                        item = self._parsear_pendiente(linea)
+                        if item:
+                            items.append(item)
+                return items
+        except Exception as ex:
+            logger.error("Error al leer pendientes: %s", ex)
+            return []
 
     def decir_pendientes(self, limite: int = 5):
         logger.debug("Leyendo pendientes de '%s'.", self._pendientes_path)
@@ -220,16 +240,22 @@ class MemoryTools:
             self.lia.hablar(f"Ya hay un pomodoro corriendo, {self.lia.persona.nombre}.")
             return
 
+        # Estado controlable desde voz: pausar/reanudar/cancelar (tick de 1s).
+        self._pomodoro_cancelado = threading.Event()
+        self._pomodoro_pausado = threading.Event()
+        self._pomodoro_restante = minutos * 60
+
         def _run():
             self.lia.hablar(self.lia.persona.pomodoro_inicio(minutos))
             flag = self._shutdown_flag
-            if flag:
-                # wait() retorna True si se activó el flag (shutdown), False si expiró el timeout
-                shutdown = flag.wait(timeout=minutos * 60)
-                if shutdown:
+            while self._pomodoro_restante > 0:
+                if flag is not None and flag.is_set():
                     return
-            else:
-                time.sleep(minutos * 60)
+                if self._pomodoro_cancelado.is_set():
+                    return
+                if not self._pomodoro_pausado.is_set():
+                    self._pomodoro_restante -= 1
+                time.sleep(1)
             self.lia.hablar(self.lia.persona.pomodoro_fin())
             try:
                 self.lia.sistema.notificar("Lia – Pomodoro",
@@ -241,6 +267,41 @@ class MemoryTools:
         self.pomodoro_thread = threading.Thread(target=_run, daemon=True)
         self.pomodoro_thread.start()
         self.registrar_actividad("Inició Pomodoro")
+
+    def _pomodoro_activo(self) -> bool:
+        return bool(self.pomodoro_thread and self.pomodoro_thread.is_alive())
+
+    def pausar_pomodoro(self):
+        if not self._pomodoro_activo():
+            self.lia.hablar("No hay ningún pomodoro corriendo.")
+            return
+        if self._pomodoro_pausado.is_set():
+            self.lia.hablar("El pomodoro ya estaba en pausa.")
+            return
+        self._pomodoro_pausado.set()
+        mins = self._pomodoro_restante // 60
+        self.lia.hablar(f"Pomodoro en pausa. Quedan {mins} minutos.")
+        self.registrar_actividad("Pausó el pomodoro")
+
+    def reanudar_pomodoro(self):
+        if not self._pomodoro_activo():
+            self.lia.hablar("No hay ningún pomodoro corriendo.")
+            return
+        if not self._pomodoro_pausado.is_set():
+            self.lia.hablar("El pomodoro no estaba en pausa.")
+            return
+        self._pomodoro_pausado.clear()
+        mins = self._pomodoro_restante // 60
+        self.lia.hablar(f"Pomodoro reanudado. Quedan {mins} minutos.")
+        self.registrar_actividad("Reanudó el pomodoro")
+
+    def cancelar_pomodoro(self):
+        if not self._pomodoro_activo():
+            self.lia.hablar("No hay ningún pomodoro corriendo.")
+            return
+        self._pomodoro_cancelado.set()
+        self.lia.hablar("Pomodoro cancelado.")
+        self.registrar_actividad("Canceló el pomodoro")
 
     def recordar_en(self, mensaje: str, minutos: float):
         if minutos <= 0:
