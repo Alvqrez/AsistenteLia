@@ -9,10 +9,12 @@ guardas para resolver colisiones) pero ahora es modular y extensible (OCP):
 agregar una intención no requiere tocar este archivo.
 
 Flujo de `handle_text`:
-    1. Si hay una acción pendiente (Lia esperaba un dato), la respuesta la completa.
-    2. Se busca la intención de mayor prioridad que coincida y se despacha.
-    3. Si nada coincide y hay un `IntentResolver` (IA) configurado, se delega.
-    4. Si todo falla, fallback de "no entendí".
+    1. Las intenciones `global_override=True` (kill switches como "aborta") se
+       evalúan primero, sin importar el estado de la conversación.
+    2. Si hay una acción pendiente (Lia esperaba un dato), la respuesta la completa.
+    3. Se busca la intención de mayor prioridad que coincida y se despacha.
+    4. Si nada coincide y hay un `IntentResolver` (IA) configurado, se delega.
+    5. Si todo falla, fallback de "no entendí".
 
 El resolutor por IA (Fase 6) es opcional e inyectable; hoy queda en None.
 """
@@ -60,10 +62,14 @@ class IntentRouter:
             self._sorted = True
         return self._specs
 
+    @property
+    def _global_specs(self) -> list[IntentSpec]:
+        return [s for s in self.specs if s.global_override]
+
     # ── Matching ─────────────────────────────────────────────────────────────
-    def match(self, cmd_lower: str) -> Optional[IntentMatch]:
+    def match(self, cmd_lower: str, specs: Optional[list[IntentSpec]] = None) -> Optional[IntentMatch]:
         """Devuelve la primera intención (por prioridad) que coincide, o None."""
-        for spec in self.specs:
+        for spec in (specs if specs is not None else self.specs):
             try:
                 slots = spec.matcher(cmd_lower)
             except Exception as ex:
@@ -72,6 +78,23 @@ class IntentRouter:
             if slots is not None:
                 return IntentMatch(spec=spec, text=cmd_lower, slots=slots)
         return None
+
+    def _dispatch(self, ctx, match: IntentMatch) -> None:
+        """Ejecuta el handler de una intención ya resuelta y publica los eventos."""
+        cmd_l = match.text
+        ctx.bus.publish(Event.INTENT, {"name": match.name, "text": cmd_l})
+        try:
+            match.spec.handler(ctx, match)
+        except Exception as ex:
+            logger.error("Handler de '%s' falló: %s", match.name, ex, exc_info=True)
+            ctx.bus.publish(Event.COMMAND_FAILED,
+                            {"name": match.name, "text": cmd_l, "error": str(ex)})
+            ctx.say(ctx.persona.error_generico("completar esa acción"))
+        else:
+            ctx.bus.publish(Event.COMMAND_EXECUTED,
+                            {"name": match.name, "text": cmd_l,
+                             "skill": match.spec.skill,
+                             "category": match.spec.category})
 
     # ── Despacho ───────────────────────────────────────────────────────────
     def handle_text(self, raw: str) -> bool:
@@ -83,35 +106,29 @@ class IntentRouter:
             return False
 
         ctx = self.ctx
+        cmd_l = raw.lower().strip()
 
-        # 1) Acción pendiente: la respuesta del usuario la completa.
+        # 1) Kill switches globales (p.ej. "aborta"): se evalúan SIEMPRE primero,
+        # incluso con una acción pendiente, porque el usuario debe poder
+        # interrumpir a Lia sin importar en qué estado de la conversación esté.
+        if self._global_specs:
+            global_match = self.match(cmd_l, specs=self._global_specs)
+            if global_match is not None:
+                self._dispatch(ctx, global_match)
+                return True
+
+        # 2) Acción pendiente: la respuesta del usuario la completa.
         if ctx.has_pending():
             ctx.resolve_pending(raw)
             return True
 
-        cmd_l = raw.lower().strip()
-
-        # 2) Intención determinista.
+        # 3) Intención determinista.
         match = self.match(cmd_l)
         if match is not None:
-            ctx.bus.publish(Event.INTENT, {"name": match.name, "text": cmd_l})
-            try:
-                match.spec.handler(ctx, match)
-            except Exception as ex:
-                logger.error("Handler de '%s' falló: %s", match.name, ex, exc_info=True)
-                ctx.bus.publish(Event.COMMAND_FAILED,
-                                {"name": match.name, "text": cmd_l, "error": str(ex)})
-                ctx.say(ctx.persona.error_generico("completar esa acción"))
-            else:
-                # Permite que otros módulos reaccionen sin acoplarse (estadísticas,
-                # GUI, plugins que escuchan "comando ejecutado").
-                ctx.bus.publish(Event.COMMAND_EXECUTED,
-                                {"name": match.name, "text": cmd_l,
-                                 "skill": match.spec.skill,
-                                 "category": match.spec.category})
+            self._dispatch(ctx, match)
             return True
 
-        # 3) Resolutor por IA (futuro; hoy None).
+        # 4) Resolutor por IA (futuro; hoy None).
         if self.ai_resolver is not None:
             try:
                 ai_match = self.ai_resolver.resolve(cmd_l, self.specs)
@@ -122,7 +139,7 @@ class IntentRouter:
                 ai_match.spec.handler(ctx, ai_match)
                 return True
 
-        # 4) Fallback: no entendí.
+        # 5) Fallback: no entendí.
         if self.on_unhandled is not None:
             self.on_unhandled(cmd_l)
         return False

@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 
 from core.intent import IntentSpec
-from core.matchers import all_of, contains_any, starts_with
+from core.matchers import all_of, any_of, contains_any, starts_with
 from core.skill import Skill
 
 logger = logging.getLogger("lia.skill.tasks")
@@ -24,6 +24,8 @@ _SINONIMOS_PENDIENTES = (
 _VERBOS_ANOTAR = ("anota", "apunta", "agrega pendiente", "agrega tarea",
                   "agrega", "añade pendiente", "añade")
 _KW_COMPLETAR = ("lista", "completada", "hecha", "terminada", "completa", "done")
+_REFERENCIAS_ULTIMO = ("eso", "esa", "ese", "la última", "la ultima",
+                       "el último", "el ultimo", "lo último", "lo ultimo")
 
 
 def _pendientes(ctx, m):
@@ -36,6 +38,7 @@ def _anotar(ctx, m):
             texto = m.text.split(verbo, 1)[-1].strip().strip(",.-: ")
             if texto:
                 ctx.memoria.agregar_pendiente(texto)
+                ctx.contexto.registrar_pendiente(texto)
             else:
                 ctx.say("¿Qué quieres que anote?")
             return
@@ -46,6 +49,14 @@ def _completar(ctx, m):
         if kw in m.text:
             tarea = (m.text.replace("tarea", "").replace("pendiente", "")
                      .replace(kw, "").strip().strip(",.-: "))
+            # Referencia a "lo último" en vez del texto exacto del pendiente:
+            # reutiliza el mismo patrón que ya existe para apps/urls/archivos
+            # en ContextoConversacional, extendido a pendientes.
+            if not tarea or tarea in _REFERENCIAS_ULTIMO:
+                tarea = getattr(ctx.contexto, "ultimo_pendiente", None)
+                if not tarea:
+                    ctx.say("No sé a qué pendiente te refieres. Dime cuál.")
+                    return
             ctx.memoria.completar_tarea(tarea)
             return
 
@@ -85,12 +96,20 @@ class TasksSkill(Skill):
                        aliases=("anota comprar pan",),
                        examples=("anota comprar pan", "apunta llamar a Ana")),
             IntentSpec(name="tasks.completar", priority=310,
-                       matcher=all_of(contains_any(_KW_COMPLETAR),
-                                      contains_any(("tarea", "pendiente"))),
+                       # Dispara con "tarea"/"pendiente" explícito (caso original)
+                       # O con una referencia a "lo último" ("completa eso"),
+                       # que _completar resuelve vía ContextoConversacional.
+                       matcher=any_of(
+                           all_of(contains_any(_KW_COMPLETAR),
+                                  contains_any(("tarea", "pendiente"))),
+                           all_of(contains_any(_KW_COMPLETAR),
+                                  contains_any(_REFERENCIAS_ULTIMO)),
+                       ),
                        handler=_completar,
-                       description="Marca una tarea como completada",
-                       aliases=("tarea comprar pan lista",),
-                       examples=("tarea comprar pan lista",)),
+                       description="Marca una tarea como completada (por nombre o "
+                                   "con 'completa eso' / 'la última' tras anotarla)",
+                       aliases=("tarea comprar pan lista", "completa eso"),
+                       examples=("tarea comprar pan lista", "completa eso")),
             IntentSpec(name="tasks.nota", priority=320,
                        matcher=starts_with(("nota ",)), handler=_nota,
                        description="Guarda una nota clave-valor",

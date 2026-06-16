@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import difflib
 import logging
 import os
 import shutil
@@ -218,9 +219,24 @@ class SystemTools:
     def _es_comando_simple(self, ruta: str) -> bool:
         return "\\" not in ruta and "/" not in ruta
 
+    @staticmethod
+    def _fuzzy_key(clave: str, candidatos) -> str | None:
+        """
+        Tolera variantes fonéticas/typos de STT (p.ej. 'espotify' -> 'spotify',
+        'diskord' -> 'discord') sin tocar el sistema de matchers de frases.
+        cutoff alto: prioriza evitar falsos positivos sobre cubrir cada typo.
+        """
+        coincidencias = difflib.get_close_matches(clave, list(candidatos), n=1, cutoff=0.72)
+        return coincidencias[0] if coincidencias else None
+
     def _resolver_ruta(self, clave: str):
         clave_l = clave.lower()
         raw = self.APP_MAP.get(clave_l, "")
+        if not raw:
+            clave_fuzzy = self._fuzzy_key(clave_l, self.APP_MAP.keys())
+            if clave_fuzzy:
+                clave_l = clave_fuzzy
+                raw = self.APP_MAP[clave_l]
         if not raw:
             return None
 
@@ -252,6 +268,10 @@ class SystemTools:
     def abrir_web(self, nombre: str):
         nombre_lower = nombre.lower().strip()
         url = self.WEB_MAP.get(nombre_lower)
+        if not url:
+            clave_fuzzy = self._fuzzy_key(nombre_lower, self.WEB_MAP.keys())
+            if clave_fuzzy:
+                url = self.WEB_MAP[clave_fuzzy]
         if url:
             webbrowser.open(url)
             self.lia.hablar(self.lia.persona.abriendo_app(nombre))
@@ -324,6 +344,10 @@ class SystemTools:
                         return
 
         url_conocida = self.WEB_MAP.get(nombre_limpio)
+        if not url_conocida:
+            clave_fuzzy = self._fuzzy_key(nombre_limpio, self.WEB_MAP.keys())
+            if clave_fuzzy:
+                url_conocida = self.WEB_MAP[clave_fuzzy]
         if url_conocida:
             webbrowser.open(url_conocida)
             if not silent:
@@ -396,6 +420,12 @@ class SystemTools:
                 if clave in nombre_l or nombre_l in clave:
                     proc = exe
                     break
+
+        if not proc:
+            # Typos/variantes fonéticas de STT (p.ej. "diskord" → "discord").
+            clave_fuzzy = self._fuzzy_key(nombre_l, self._CLOSE_MAP.keys())
+            if clave_fuzzy:
+                proc = self._CLOSE_MAP[clave_fuzzy]
 
         if not proc:
             # Intento directo: añade .exe si el usuario lo nombró exactamente

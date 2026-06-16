@@ -15,9 +15,11 @@ Toda la lógica de "qué hace cada comando" vive en `skills/`; el ruteo, en
 
 from __future__ import annotations
 
+import datetime
 import json
 import logging
 import os
+import platform
 import sys
 import threading
 import time
@@ -48,6 +50,8 @@ from mod_vida import VidaTools
 from mod_voz import VozEngine
 import mod_sonidos
 
+from services.desktop.base import NullDesktopService
+from services.desktop.windows import WindowsDesktopService
 from services.memory_store import MemoryStore
 from services.scheduler import PersistentScheduler
 
@@ -67,6 +71,7 @@ class ExtendedSystemTools(FileOpsTools, SystemTools):
 class LiaKernel:
     def __init__(self, gui_window=None) -> None:
         self.is_active = True
+        self._last_sin_conexion_ts = 0.0
         self._active_lock = threading.Lock()
         self._shutdown_flag = threading.Event()
         self._resume_event = threading.Event()
@@ -77,6 +82,7 @@ class LiaKernel:
         self.config = ConfigManager(_ROOT_DIR)
         self.persona = Persona(nombre=self.config.get("usuario", "Leonardo")
                                if self.config.get("usuario") else "Leonardo")
+        self.persona.set_modo(self.config.get("tts_mode", "normal"))
         self.memory = MemoryStore(_DATA_DIR)
 
         self.ctx = AssistantContext(self.bus, self.config, self.persona, self.memory)
@@ -116,8 +122,12 @@ class LiaKernel:
             # de entorno o se desactiva sounddevice.
             self.recognizer.dynamic_energy_threshold = True
             self.recognizer.dynamic_energy_adjustment_damping = 0.10
-            self.recognizer.pause_threshold = 1.2
-            self.recognizer.non_speaking_duration = 0.7
+            # Bajados de 1.2/0.7 para reducir la latencia percibida al final de
+            # cada frase. Trade-off: frases con pausas internas largas (pensar
+            # en voz alta a media oración) se pueden cortar antes; si molesta
+            # en uso real, estos son los primeros valores a revertir.
+            self.recognizer.pause_threshold = 0.9
+            self.recognizer.non_speaking_duration = 0.5
             logger.info("STT: energy_threshold=%d, dynamic=True", energy)
         except Exception as ex:
             logger.error("Micrófono no disponible (%s). Modo solo-texto (GUI).", ex)
@@ -165,11 +175,34 @@ class LiaKernel:
             print(f"   ⚠ Validación de comandos: {len(problemas)} advertencia(s) "
                   "(detalle en data/lia.log)")
 
+        # ── Feedback sonoro en modo TTS mínimo ────────────────────────────
+        self._wire_audio_feedback()
+
         # ── Arranque ─────────────────────────────────────────────────────
         from skills import _help
         _help.generar_txt_comandos(self.commands)
         self.ctx.say(self.persona.saludo_inicio())
         mod_sonidos.sonido_inicio()
+
+        # Briefing corto proactivo: una vez por día calendario, sin abrir el
+        # navegador (eso queda exclusivo de "buenos días" cuando el usuario
+        # lo pide explícitamente). Se lanza en un hilo demorado para que el
+        # STT tenga tiempo de calibrar adjust_for_ambient_noise sin interferencia
+        # del audio TTS del propio saludo (si se ejecutara aquí de forma síncrona,
+        # el recognizer calibraría con la voz de Lia como "ruido ambiente" y el
+        # umbral de energía quedaría demasiado alto, impidiendo escuchar comandos).
+        def _lanzar_briefing():
+            try:
+                hoy = datetime.date.today().isoformat()
+                if self.config.get("ultimo_briefing_fecha") != hoy:
+                    self.internet.briefing_corto()
+                    self.config.set("ultimo_briefing_fecha", hoy)
+            except Exception as ex:
+                logger.error("Error en briefing automático: %s", ex)
+
+        t = threading.Timer(3.0, _lanzar_briefing)
+        t.daemon = True
+        t.start()
 
     # ── Construcción de servicios ──────────────────────────────────────────
     def _build_services(self) -> None:
@@ -186,9 +219,12 @@ class LiaKernel:
         self.recordatorios._shutdown = self._shutdown_flag
         self.vida = VidaTools(ctx)
         self.memoria._shutdown_flag = self._shutdown_flag
+        self.desktop = (WindowsDesktopService() if platform.system() == "Windows"
+                        else NullDesktopService())
 
         for nombre in ("sistema", "memoria", "internet", "dev", "productividad",
-                       "focus", "resumen", "contexto", "recordatorios", "vida"):
+                       "focus", "resumen", "contexto", "recordatorios", "vida",
+                       "desktop"):
             ctx.attach_service(nombre, getattr(self, nombre))
 
         # El escritor primario del historial sigue siendo mod_memoria (evita
@@ -227,6 +263,22 @@ class LiaKernel:
         self.bus.subscribe(Event.SPEAK, _on_speak)
         self.bus.subscribe(Event.ACTIVITY, _on_activity)
         self.bus.subscribe(Event.STATUS, _on_status)
+
+    # ── Feedback sonoro ───────────────────────────────────────────────────
+    # Categorías de acción "muda" en modo mínimo: el éxito se confirma con un
+    # beep en vez de una frase larga. Se excluyen categorías informativas
+    # (ayuda, control) donde la respuesta hablada YA es el contenido pedido.
+    _CATEGORIAS_BEEP_EXITO = {"aplicaciones", "sistema", "desarrollo", "internet"}
+
+    def _wire_audio_feedback(self) -> None:
+        def _on_command_executed(payload):
+            if self.persona.modo_tts != "minimal":
+                return
+            categoria = (payload or {}).get("category", "")
+            if categoria in self._CATEGORIAS_BEEP_EXITO:
+                mod_sonidos.sonido_confirmacion()
+
+        self.bus.subscribe(Event.COMMAND_EXECUTED, _on_command_executed)
 
     # ── Fallback de intención no reconocida ───────────────────────────────
     def _on_unhandled(self, cmd_l: str) -> None:
@@ -388,7 +440,18 @@ class LiaKernel:
                 except sr.UnknownValueError:
                     pass
                 except sr.RequestError as ex:
+                    # Si no avisamos, el usuario percibe esto como "Lia no
+                    # escucha": el microfono SI capturo el audio, pero la API
+                    # de reconocimiento (red) fallo. Throttle de 15s para no
+                    # repetir el aviso si varios intentos fallan en cadena
+                    # durante un corte de conexion sostenido.
                     print(f"Error reconocimiento: {ex}")
+                    logger.warning("STT RequestError (red): %s", ex)
+                    ahora = time.time()
+                    if ahora - self._last_sin_conexion_ts > 15:
+                        self._last_sin_conexion_ts = ahora
+                        mod_sonidos.sonido_error()
+                        self.ctx.say(self.persona.sin_conexion())
                 except Exception as ex:
                     logger.warning("Error inesperado en listen_loop: %s", ex, exc_info=True)
                     time.sleep(0.5)

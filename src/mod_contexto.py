@@ -93,6 +93,7 @@ class ContextoConversacional:
         self.ultimo_archivo:   Optional[str]  = None
         self.ultima_url:       Optional[str]  = None
         self.ultimo_proceso:   Optional[str]  = None
+        self.ultimo_pendiente: Optional[str]  = None
         self.ultimos_procesos_abiertos: list  = []
         self.ultimas_urls_abiertas:     list  = []
 
@@ -111,6 +112,9 @@ class ContextoConversacional:
 
     def registrar_apertura_archivo(self, ruta: str):
         self.ultimo_archivo = ruta
+
+    def registrar_pendiente(self, texto: str):
+        self.ultimo_pendiente = texto
 
     def limpiar_ultimo_modo(self):
         self.ultimos_procesos_abiertos.clear()

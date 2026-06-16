@@ -17,6 +17,7 @@ _DEFAULTS: dict = {
 
     # TTS
     "tts_rate": 175,          # palabras por minuto
+    "tts_mode": "normal",     # "normal" (personalidad completa) | "minimal" (respuestas cortas)
 
     # Detección de aplausos
     "clap_threshold_multiplier": 3.0,   # noise_floor * este valor

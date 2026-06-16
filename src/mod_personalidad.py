@@ -10,9 +10,23 @@ class Persona:
 
     def __init__(self, nombre="Leonardo"):
         self.nombre = nombre
+        # "normal": personalidad J.A.R.V.I.S. completa. "minimal": confirmaciones
+        # cortas para acciones exitosas (objetivo de UX de voz minimalista). Los
+        # mensajes de error/ambigüedad/confirmación destructiva siempre van
+        # completos, sin importar el modo: ver no_entendi/error_generico/pausa/
+        # apagado/bloqueando_pc/cpu_ram/app_no_encontrada/sin_conexion más abajo.
+        self.modo_tts = "normal"
+
+    def set_modo(self, modo: str):
+        self.modo_tts = modo if modo in ("normal", "minimal") else "normal"
 
     def _r(self, opciones):
         return random.choice(opciones)
+
+    def _corto(self, variantes_cortas, fn_normal):
+        if self.modo_tts == "minimal":
+            return self._r(variantes_cortas)
+        return fn_normal()
 
     def _saludo_horario(self):
         h = datetime.datetime.now().hour
@@ -54,34 +68,34 @@ class Persona:
         ])
 
     def modo_estudio(self):
-        return self._r([
+        return self._corto(["Modo Estudio."], lambda: self._r([
             f"Modo Estudio activado.",
             f"Modo Estudio listo.",
             f"Modo Estudio en marcha.",
-        ])
+        ]))
 
     def modo_codigo(self):
-        return self._r([
+        return self._corto(["Modo Código."], lambda: self._r([
             f"Modo Codigo activado.",
             f"Entorno de desarrollo listo.",
             f"Modo Codigo en linea.",
-        ])
+        ]))
 
     def modo_juego(self):
-        return self._r([
+        return self._corto(["Modo Juego."], lambda: self._r([
             f"Modo Juego activado.",
             f"Modo Juego listo.",
             f"Modo Juego en linea.",
-        ])
+        ]))
 
     # ----- Comandos cotidianos -----
     def gracias(self):
-        return self._r([
+        return self._corto(["A la orden."], lambda: self._r([
             f"Es mi trabajo, {self.nombre}. Aunque agradezco el detalle.",
             f"Para servirle, {self.nombre}. Como si tuviera otra opcion.",
             f"De nada. Veo que aun recuerda los modales, {self.nombre}.",
             f"Siempre, {self.nombre}. Aqui estare cuando vuelva a necesitarme.",
-        ])
+        ]))
 
     def saludo_corto(self):
         return self._r([
@@ -92,19 +106,27 @@ class Persona:
         ])
 
     def confirmacion(self):
-        return self._r([
+        return self._corto(["Hecho.", "Listo.", "Ok."], lambda: self._r([
             "Por supuesto.",
             "De inmediato.",
             "Como ordene.",
             f"Hecho, {self.nombre}.",
             "Procediendo.",
-        ])
+        ]))
 
     def no_entendi(self):
         return self._r([
             f"Disculpe, {self.nombre}, podria repetirlo?",
             f"No le he entendido, {self.nombre}. Pruebe articulando.",
             f"Mi reconocimiento de voz tiene sus limites, {self.nombre}. Repitalo, por favor.",
+        ])
+
+    def sin_conexion(self):
+        # Error: va completo siempre, igual que no_entendi/error_generico (ver nota arriba).
+        return self._r([
+            f"No tengo conexion para reconocer voz, {self.nombre}. Revise su red.",
+            "Fallo de red al transcribir. Intentelo de nuevo en un momento.",
+            f"Me quede sin internet a medio reconocer, {self.nombre}.",
         ])
 
     def pausa(self):
@@ -115,27 +137,27 @@ class Persona:
         ])
 
     def silencio(self):
-        return self._r([
+        return self._corto(["Silencio."], lambda: self._r([
             "Modo silencioso. Entendido.",
             "Callando, como ordene.",
             "En silencio. Aun asi, sigo aqui.",
-        ])
+        ]))
 
     def voz_reactivada(self):
-        return self._r([
+        return self._corto(["Voz activa."], lambda: self._r([
             f"Voz reactivada, {self.nombre}.",
             "De vuelta al aire.",
             "Sonido restablecido. Me extranio?",
-        ])
+        ]))
 
     # ----- Acciones del sistema -----
     def abriendo_app(self, nombre_app):
-        return self._r([
+        return self._corto([f"Abierto."], lambda: self._r([
             f"Abriendo {nombre_app}.",
             f"Ahi va {nombre_app}, {self.nombre}.",
             f"{nombre_app} en camino.",
             f"Lanzando {nombre_app}.",
-        ])
+        ]))
 
     def cerrando_todo(self):
         return self._r([
@@ -159,18 +181,18 @@ class Persona:
 
     # ----- Productividad -----
     def pendiente_agregado(self, texto):
-        return self._r([
+        return self._corto(["Anotado."], lambda: self._r([
             f"Anotado: {texto}. Espero que esta vez si lo haga.",
             f"Listo, {self.nombre}. Agregue: {texto}.",
             f"Apuntado. Otro pendiente mas para la pila.",
-        ])
+        ]))
 
     def tarea_completada(self, texto):
-        return self._r([
+        return self._corto(["Listo."], lambda: self._r([
             f"Excelente, {self.nombre}. Marque '{texto}' como completada.",
             f"'{texto}' fuera de la lista. Un milagro.",
             f"Hecho. Una menos, {self.nombre}.",
-        ])
+        ]))
 
     def sin_pendientes(self):
         return self._r([

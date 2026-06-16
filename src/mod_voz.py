@@ -315,6 +315,27 @@ class VozEngine:
         except queue.Empty:
             pass
 
+    def detener_inmediato(self):
+        """
+        Corta la voz YA: vacía la cola y detiene el audio que se esté
+        reproduciendo en este instante (no solo lo pendiente). Lo usa el
+        comando global de abort, que debe silenciar a Lia sin esperar a que
+        termine la frase actual.
+        """
+        self.vaciar()
+        if self._pygame_ok:
+            try:
+                import pygame
+                if pygame.mixer.get_init():
+                    pygame.mixer.music.stop()
+            except Exception as ex:
+                logger.debug("No se pudo detener pygame.mixer: %s", ex)
+        if self._pyttsx3_engine is not None:
+            try:
+                self._pyttsx3_engine.stop()
+            except Exception as ex:
+                logger.debug("No se pudo detener pyttsx3: %s", ex)
+
     def detener(self):
         self._queue.put(_SENTINEL)
         self._thread.join(timeout=3)

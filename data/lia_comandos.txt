@@ -1,5 +1,5 @@
 +==============================================================+
-|             ASISTENTE LIA  v5.1  —  123 comandos             |
+|             ASISTENTE LIA  v5.1  —  130 comandos             |
 +==============================================================+
 |  APLAUSOS                                                    |
 |    1 aplauso   ->  Modo Estudio                              |
@@ -51,6 +51,8 @@
 |      Dice en qué proyecto estás trabajando                   |
 |                                                              |
 |  -- CONTROL -----------------------------------------------  |
+|  "aborta"                                                    |
+|      Parada de emergencia: detiene la voz, cancela modos activos (enfoque, pomodoro) y cualquier pregunta pendiente. Funciona siempre, sin importar lo que Lia esté haciendo|
 |  "apagate"                                                   |
 |      Apaga el asistente por completo                         |
 |      tambien: "hasta luego"                                  |
@@ -75,6 +77,10 @@
 |  "habla"                                                     |
 |      Reactiva la voz de Lia                                  |
 |      tambien: "activa voz"                                   |
+|  "modo mínimo"                                               |
+|      Respuestas cortas en éxito (Hecho/Listo); errores y ambigüedad siguen completos. Sonido de confirmación añade contexto|
+|  "modo normal"                                               |
+|      Vuelve a las respuestas completas con personalidad      |
 |  "pausate"                                                   |
 |      Pausa la escucha (reactivar con 'ya regresé' o 3 aplausos)|
 |      tambien: "descansa"                                     |
@@ -169,7 +175,7 @@
 |      tambien: "pausa spotify"                                |
 |  "reproduce música"                                          |
 |      Reproduce o reanuda la música                           |
-|      tambien: "pon música"                                   |
+|      tambien: "pon música" / "reproduce spotify"             |
 |  "siguiente canción"                                         |
 |      Salta a la siguiente canción                            |
 |  "sube volumen"                                              |
@@ -241,6 +247,15 @@
 |      tambien: "qué hice hoy"                                 |
 |                                                              |
 |  -- SISTEMA -----------------------------------------------  |
+|  "cambia a chrome"                                           |
+|      Trae una ventana al frente por nombre                   |
+|      tambien: "enfoca spotify"                               |
+|  "lista ventanas"                                            |
+|      Lista las ventanas abiertas                             |
+|  "maximiza el bloc de notas"                                 |
+|      Maximiza una ventana por nombre                         |
+|  "minimiza spotify"                                          |
+|      Minimiza una ventana por nombre                         |
 |  "uso de cpu"                                                |
 |      Porcentaje de uso del CPU en este momento               |
 |  "salud del disco"                                           |
@@ -284,7 +299,8 @@
 |  "anota comprar pan"                                         |
 |      Anota un pendiente nuevo                                |
 |  "tarea comprar pan lista"                                   |
-|      Marca una tarea como completada                         |
+|      Marca una tarea como completada (por nombre o con 'completa eso' / 'la última' tras anotarla)|
+|      tambien: "completa eso"                                 |
 |  "recuerda nota wifi"                                        |
 |      Lee una nota guardada por su clave                      |
 |  "mis notas"                                                 |

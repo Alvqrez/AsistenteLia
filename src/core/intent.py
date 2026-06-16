@@ -48,6 +48,11 @@ class IntentSpec:
                   VALIDACIÓN de conflictos (cada alias debe rutear a su dueño).
     examples    — frases de ejemplo con slots; documentación viva y semilla NLU.
     skill       — nombre de la skill propietaria (lo rellena el registry).
+    global_override — si True, el router la evalúa ANTES de resolver una acción
+                  pendiente (ctx.has_pending()). Reservado para "kill switches"
+                  tipo "aborta" que deben funcionar sin importar el estado de
+                  la conversación. Usar con moderación: cada intención global
+                  se evalúa en cada turno, incluso con pending activo.
     """
     name: str
     matcher: Matcher
@@ -58,6 +63,7 @@ class IntentSpec:
     aliases: tuple[str, ...] = ()
     examples: tuple[str, ...] = ()
     skill: str = ""
+    global_override: bool = False
 
 
 @dataclass

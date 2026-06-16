@@ -43,6 +43,32 @@ class InternetTools:
             logger.warning("Error en _clima_corto: %s", ex)
             return "sin datos de clima"
 
+    def briefing_corto(self):
+        """
+        Versión no intrusiva de rutina_inicio: hora + clima + pendientes,
+        SIN abrir el navegador. Pensada para disparo automático (una vez al
+        día); rutina_inicio() sigue siendo la versión completa a pedido.
+        """
+        try:
+            ahora = datetime.datetime.now()
+            hora  = ahora.strftime("%I:%M")
+            ampm  = "de la mañana" if ahora.hour < 12 else "de la tarde"
+            self.lia.hablar(f"Son las {hora} {ampm}, {self.lia.persona.nombre}.")
+        except Exception as ex:
+            logger.error("Error en hora de briefing_corto: %s", ex)
+
+        try:
+            self.lia.hablar(f"Clima: {self._clima_corto()}.")
+        except Exception as ex:
+            logger.error("Error en clima de briefing_corto: %s", ex)
+
+        try:
+            self.lia.memoria.decir_pendientes(limite=3)
+        except Exception as ex:
+            logger.error("Error en pendientes de briefing_corto: %s", ex)
+
+        self.lia.registrar_actividad("Briefing corto automático")
+
     def rutina_inicio(self):
         self.lia.hablar(f"Iniciando rutina, {self.lia.persona.nombre}. Veamos cómo va el día.")
 

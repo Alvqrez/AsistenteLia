@@ -61,3 +61,7 @@ def sonido_cancelar():
 
 def sonido_apagado():
     _play([(660, 80), (550, 80), (440, 120)])
+
+
+def sonido_abortado():
+    _en_hilo([(220, 90), (160, 110)])

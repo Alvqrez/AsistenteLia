@@ -82,6 +82,36 @@ def _config(ctx, match):
     ctx.config.asistente_configuracion(ctx)
 
 
+def _modo_minimo(ctx, match):
+    ctx.config.set("tts_mode", "minimal")
+    ctx.persona.set_modo("minimal")
+    ctx.say("Modo mínimo.")
+
+
+def _modo_normal_tts(ctx, match):
+    ctx.config.set("tts_mode", "normal")
+    ctx.persona.set_modo("normal")
+    ctx.say(ctx.persona.saludo_corto())
+
+
+def _aborta(ctx, match):
+    """Kill switch global: detiene voz, modos activos y cualquier pregunta
+    pendiente. Registrado con global_override=True para que funcione sin
+    importar el estado de la conversación (ver core/router.py)."""
+    ctx.cancel_pending()
+    if ctx.voz is not None:
+        ctx.voz.detener_inmediato()
+    focus = getattr(ctx, "focus", None)
+    if focus is not None and focus.activo:
+        focus.desactivar()
+    memoria = getattr(ctx, "memoria", None)
+    if memoria is not None and memoria.pomodoro_en_curso():
+        memoria.cancelar_pomodoro()
+    if mod_sonidos:
+        mod_sonidos.sonido_abortado()
+    ctx.say("Abortado.")
+
+
 def _silencio(ctx, match):
     if ctx.voz is not None:
         ctx.voz.set_silencioso(True)
@@ -142,6 +172,23 @@ class VoiceControlSkill(Skill):
     def intents(self, ctx):
         return [
             IntentSpec(
+                # Nota: deliberadamente NO incluye "abortar" — esa palabra ya la
+                # usa ws.abortar (cierra todo lo que Lia abrió en la sesión, otra
+                # función). "aborta" (sin r) es la parada de emergencia.
+                name="control.aborta", priority=1, global_override=True,
+                matcher=any_of(
+                    equals_any(("aborta",)),
+                    contains_any(("aborta ya", "detente ya", "alto total", "para todo ya")),
+                ),
+                handler=_aborta,
+                description="Parada de emergencia: detiene la voz, cancela modos "
+                            "activos (enfoque, pomodoro) y cualquier pregunta "
+                            "pendiente. Funciona siempre, sin importar lo que Lia "
+                            "esté haciendo",
+                aliases=("aborta",),
+                examples=("aborta", "aborta ya"),
+            ),
+            IntentSpec(
                 name="control.cancelar_sin_pendiente", priority=15,
                 matcher=equals_any(("cancela", "cancel", "olvídalo", "olvidalo", "no importa")),
                 handler=_cancel_sin_pendiente,
@@ -193,6 +240,25 @@ class VoiceControlSkill(Skill):
                 description="Abre el asistente de configuración",
                 aliases=("configuración", "ajustes"),
                 examples=("configuracion", "ajustes"),
+            ),
+            IntentSpec(
+                name="control.modo_minimo", priority=65,
+                matcher=contains_any(("modo mínimo", "modo minimo", "respuestas cortas",
+                                      "modo corto", "sé breve", "se breve")),
+                handler=_modo_minimo,
+                description="Respuestas cortas en éxito (Hecho/Listo); errores y "
+                            "ambigüedad siguen completos. Sonido de confirmación añade contexto",
+                aliases=("modo mínimo",),
+                examples=("modo mínimo", "respuestas cortas"),
+            ),
+            IntentSpec(
+                name="control.modo_normal_tts", priority=66,
+                matcher=contains_any(("modo normal", "respuestas normales",
+                                      "modo detallado", "habla con personalidad")),
+                handler=_modo_normal_tts,
+                description="Vuelve a las respuestas completas con personalidad",
+                aliases=("modo normal",),
+                examples=("modo normal", "respuestas normales"),
             ),
             IntentSpec(
                 name="control.silencio", priority=80,

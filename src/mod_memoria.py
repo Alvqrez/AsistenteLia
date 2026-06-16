@@ -271,6 +271,12 @@ class MemoryTools:
     def _pomodoro_activo(self) -> bool:
         return bool(self.pomodoro_thread and self.pomodoro_thread.is_alive())
 
+    def pomodoro_en_curso(self) -> bool:
+        """Versión pública: para que otros módulos (p.ej. el abort global)
+        comprueben si hay pomodoro antes de cancelarlo, sin disparar el
+        mensaje hablado de '_activo' que asume que se quiere hablar."""
+        return self._pomodoro_activo()
+
     def pausar_pomodoro(self):
         if not self._pomodoro_activo():
             self.lia.hablar("No hay ningún pomodoro corriendo.")
