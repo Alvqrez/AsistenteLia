@@ -26,6 +26,7 @@ from typing import Optional, Protocol
 
 from core.event_bus import Event
 from core.intent import IntentMatch, IntentSpec
+from core.normalizer import normalize
 
 logger = logging.getLogger("lia.router")
 
@@ -96,6 +97,32 @@ class IntentRouter:
                              "skill": match.spec.skill,
                              "category": match.spec.category})
 
+    # ── Compound splitting ────────────────────────────────────────────────────
+    def _try_split_compound(self, text: str) -> Optional[list[str]]:
+        """
+        Intenta dividir 'A y B' en [A, B] solo si TODAS las partes coinciden
+        con intents conocidos. Elimina falsos positivos porque el check de match
+        es el mismo router (sin efectos secundarios).
+
+        Separadores probados en orden de especificidad (los largos primero para
+        no cortar " y también" como " y " + "también").
+        """
+        separators = [
+            " y también ",
+            " y luego ",
+            " y después ",
+            " luego ",
+            " después ",
+            " y ",
+        ]
+        for sep in separators:
+            if sep not in text:
+                continue
+            parts = [p.strip() for p in text.split(sep) if p.strip()]
+            if len(parts) >= 2 and all(self.match(p) is not None for p in parts):
+                return parts
+        return None
+
     # ── Despacho ───────────────────────────────────────────────────────────
     def handle_text(self, raw: str) -> bool:
         """
@@ -106,7 +133,11 @@ class IntentRouter:
             return False
 
         ctx = self.ctx
-        cmd_l = raw.lower().strip()
+
+        # Normalización: correcciones fonéticas STT + aliases del usuario.
+        # Se aplica antes de TODO el ruteo para que kill-switches, pending y
+        # matchers reciban siempre texto limpio y canónico.
+        cmd_l = normalize(raw, ctx.config)
 
         # 1) Kill switches globales (p.ej. "aborta"): se evalúan SIEMPRE primero,
         # incluso con una acción pendiente, porque el usuario debe poder
@@ -118,11 +149,24 @@ class IntentRouter:
                 return True
 
         # 2) Acción pendiente: la respuesta del usuario la completa.
+        # Se pasa el texto normalizado (no raw) para que correcciones fonéticas
+        # también apliquen en respuestas de seguimiento.
         if ctx.has_pending():
-            ctx.resolve_pending(raw)
+            ctx.resolve_pending(cmd_l)
             return True
 
-        # 3) Intención determinista.
+        # 3a) Comandos compuestos: "abre spotify y sube el volumen al 70".
+        # Solo divide si AMBAS partes matchean intents conocidos (sin efectos
+        # secundarios). Si no, cae al matching normal (3b).
+        compound_parts = self._try_split_compound(cmd_l)
+        if compound_parts:
+            for part in compound_parts:
+                m = self.match(part)
+                if m is not None:
+                    self._dispatch(ctx, m)
+            return True
+
+        # 3b) Intención determinista única.
         match = self.match(cmd_l)
         if match is not None:
             self._dispatch(ctx, match)

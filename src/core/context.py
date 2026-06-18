@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from typing import Callable, Optional
 
 from core.event_bus import Event, EventBus
+from core.session_context import SessionContext
 
 logger = logging.getLogger("lia.context")
 
@@ -73,6 +74,10 @@ class AssistantContext:
         # servicio legacy `mod_memoria` para que haya UN solo escritor de
         # historial.json (evita doble escritura con MemoryStore).
         self._activity_logger = None
+
+        # Contexto de sesión: estado de corta duración de la conversación.
+        # Handlers anotan claves como "last_app", "current_topic", etc.
+        self.session = SessionContext()
 
         # Estado de acción pendiente (pregunta de seguimiento).
         self._pending: Optional[PendingAction] = None

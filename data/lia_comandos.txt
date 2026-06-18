@@ -1,5 +1,5 @@
 +==============================================================+
-|             ASISTENTE LIA  v5.1  —  130 comandos             |
+|             ASISTENTE LIA  v5.1  —  141 comandos             |
 +==============================================================+
 |  APLAUSOS                                                    |
 |    1 aplauso   ->  Modo Estudio                              |
@@ -34,6 +34,26 @@
 |      Abre VS Code, Spotify, GitHub y la terminal de una vez  |
 |  "abre entorno web"                                          |
 |      Abre VS Code, Chrome y localhost para desarrollo web    |
+|                                                              |
+|  -- AUTOMATIZACIÓN ----------------------------------------  |
+|  "borra macro modo trabajo"                                  |
+|      Borra una macro guardada                                |
+|  "crea macro modo trabajo"                                   |
+|      Crea una macro: secuencia de comandos ejecutable por nombre|
+|  "crea una macro que abra spotify y discord"                 |
+|      Crea una macro directamente con los comandos en la frase|
+|  "ejecuta macro modo trabajo"                                |
+|      Ejecuta una macro guardada por su nombre                |
+|  "mis macros"                                                |
+|      Lista todas las macros guardadas                        |
+|                                                              |
+|  -- CONFIGURACIÓN -----------------------------------------  |
+|  "borra alias fluter"                                        |
+|      Elimina un alias personal                               |
+|  "crea alias fluter para abre el proyecto de flutter"        |
+|      Crea un alias personal: frase corta que Lia expande automáticamente|
+|  "mis aliases"                                               |
+|      Lista todos los aliases personales configurados         |
 |                                                              |
 |  -- CONTEXTO ----------------------------------------------  |
 |  "abortar"                                                   |
@@ -185,6 +205,12 @@
 |      Fija el volumen del sistema a un porcentaje             |
 |                                                              |
 |  -- PRODUCTIVIDAD -----------------------------------------  |
+|  "qué hice hoy"                                              |
+|      Muestra las actividades registradas hoy                 |
+|  "repite el último comando"                                  |
+|      Repite el último comando ejecutado en esta sesión       |
+|  "qué hice esta semana"                                      |
+|      Resume las actividades de esta semana                   |
 |  "agenda mi día"                                             |
 |      Resume tu día: recordatorios, exámenes, pendientes y metas|
 |      tambien: "plan del día"                                 |

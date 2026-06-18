@@ -50,6 +50,8 @@ from mod_vida import VidaTools
 from mod_voz import VozEngine
 import mod_sonidos
 
+from services.command_history import CommandHistory
+from services.webhook_server import WebhookServer
 from services.desktop.base import NullDesktopService
 from services.desktop.windows import WindowsDesktopService
 from services.memory_store import MemoryStore
@@ -170,10 +172,19 @@ class LiaKernel:
         # Catálogo consultable de comandos (help dinámico, búsqueda, validación).
         self.commands = CommandRegistry(self.router)
         self.ctx.attach_service("commands", self.commands)
+
+        # Historial de comandos de la sesión (para "repite el último", etc.)
+        self.command_history = CommandHistory(self.bus)
+        self.ctx.attach_service("command_history", self.command_history)
         problemas = self.commands.validate()
         if problemas:
             print(f"   ⚠ Validación de comandos: {len(problemas)} advertencia(s) "
                   "(detalle en data/lia.log)")
+
+        # ── Servidor webhook (integración con sistemas externos) ──────────
+        _webhook_port = int(self.config.get("webhook_port", 7845))
+        self.webhook = WebhookServer(self, port=_webhook_port)
+        self.webhook.start()
 
         # ── Feedback sonoro en modo TTS mínimo ────────────────────────────
         self._wire_audio_feedback()
