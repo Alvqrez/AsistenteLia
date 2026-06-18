@@ -49,6 +49,9 @@ def _youtube(ctx, m):
     consulta = m.text.replace("busca en youtube", "").replace("youtube", "").strip()
     if consulta:
         ctx.internet.buscar_youtube(consulta)
+    else:
+        ctx.ask("¿Qué quieres buscar en YouTube?",
+                lambda r: ctx.internet.buscar_youtube(r))
 
 
 def _traduce(ctx, m):
@@ -96,7 +99,7 @@ class InternetSkill(Skill):
                        aliases=("wikipedia einstein",),
                        examples=("wikipedia einstein",)),
             IntentSpec(name="internet.youtube", priority=420,
-                       matcher=contains_any(("youtube ", "busca en youtube ")),
+                       matcher=contains_any(("youtube", "busca en youtube")),
                        handler=_youtube,
                        description="Busca un video en YouTube",
                        aliases=("youtube lofi",),

@@ -7,9 +7,14 @@ from core.intent import IntentSpec
 from core.matchers import contains_any, first_number
 from core.skill import Skill
 
+_MAX_FOCUS_MINS = 480  # 8 horas
+
 
 def _activar(ctx, m):
-    ctx.focus.activar(first_number(m.text, 25))
+    mins = first_number(m.text, 25)
+    if mins > _MAX_FOCUS_MINS:
+        mins = _MAX_FOCUS_MINS
+    ctx.focus.activar(mins)
 
 
 def _desactivar(ctx, m):

@@ -77,18 +77,39 @@ _PHONETIC_RULES: list[tuple[re.Pattern, str]] = [
 
 # ── Prefijos de cortesía ──────────────────────────────────────────────────────
 # Se eliminan del inicio del texto. El orden importa: los más largos primero.
+# Algunos tienen reemplazo no vacío para redirigir a un verbo conocido.
 _POLITENESS_RULES: list[tuple[re.Pattern, str]] = [
-    (re.compile(r"^me\s+podr[ií]as\s+"),  ""),
-    (re.compile(r"^me\s+puedes\s+"),       ""),
-    (re.compile(r"^podr[ií]as\s+"),        ""),
-    (re.compile(r"^puedes\s+"),            ""),
-    (re.compile(r"^por\s+favor\s+"),       ""),
+    (re.compile(r"^me\s+podr[ií]as\s+"),      ""),
+    (re.compile(r"^me\s+puedes\s+"),           ""),
+    (re.compile(r"^me\s+dar[ií]as\s+"),        ""),
+    (re.compile(r"^me\s+das\s+"),              ""),
+    (re.compile(r"^podr[ií]as\s+"),            ""),
+    (re.compile(r"^puedes\s+"),                ""),
+    (re.compile(r"^necesito\s+que\s+"),        ""),
+    (re.compile(r"^necesito\s+"),              ""),
+    (re.compile(r"^quiero\s+que\s+"),          ""),
+    (re.compile(r"^quiero\s+"),                ""),
+    (re.compile(r"^dame\s+"),                  ""),
+    (re.compile(r"^dime\s+"),                  ""),
+    (re.compile(r"^por\s+favor\s*,?\s*"),      ""),
 ]
 
 # ── Normalización de verbo inicial ────────────────────────────────────────────
 # Mapea subjuntivo e infinitivo al imperativo cuando aparecen al INICIO del texto.
 # Solo formas que NO son ya triggers (para no crear trabajo redundante).
 _VERB_START_RULES: list[tuple[re.Pattern, str]] = [
+    # subjuntivo 2ª persona (tú)
+    (re.compile(r"^abras\s+"),       "abre "),
+    (re.compile(r"^cierres\s+"),     "cierra "),
+    (re.compile(r"^pauses\s+"),      "pausa "),
+    (re.compile(r"^actives\s+"),     "activa "),
+    (re.compile(r"^subas\s+"),       "sube "),
+    (re.compile(r"^bajes\s+"),       "baja "),
+    (re.compile(r"^busques\s+"),     "busca "),
+    (re.compile(r"^lances\s+"),      "lanza "),
+    (re.compile(r"^inicies\s+"),     "inicia "),
+    (re.compile(r"^hagas\s+"),       "haz "),
+    # subjuntivo / Usted (3ª persona)
     (re.compile(r"^abra\s+"),        "abre "),
     (re.compile(r"^cierre\s+"),      "cierra "),
     (re.compile(r"^pause\s+"),       "pausa "),
@@ -96,6 +117,7 @@ _VERB_START_RULES: list[tuple[re.Pattern, str]] = [
     (re.compile(r"^suba\s+"),        "sube "),
     (re.compile(r"^baje\s+"),        "baja "),
     (re.compile(r"^busque\s+"),      "busca "),
+    # infinitivos
     (re.compile(r"^abrir\s+"),       "abre "),
     (re.compile(r"^cerrar\s+"),      "cierra "),
     (re.compile(r"^pausar\s+"),      "pausa "),
@@ -103,6 +125,7 @@ _VERB_START_RULES: list[tuple[re.Pattern, str]] = [
     (re.compile(r"^buscar\s+"),      "busca "),
     (re.compile(r"^lanzar\s+"),      "lanza "),
     (re.compile(r"^iniciar\s+"),     "inicia "),
+    (re.compile(r"^hacer\s+"),       "haz "),
 ]
 
 
@@ -116,11 +139,17 @@ def _apply_phonetic(text: str) -> str:
 
 
 def _apply_politeness(text: str) -> str:
-    for pattern, replacement in _POLITENESS_RULES:
-        new_text = pattern.sub(replacement, text)
-        if new_text != text:
-            logger.debug("Cortesía eliminada: '%s' → '%s'", text, new_text)
-            return new_text.strip()
+    for _ in range(4):  # máximo 4 prefijos apilados: "por favor podrías..."
+        changed = False
+        for pattern, replacement in _POLITENESS_RULES:
+            new_text = pattern.sub(replacement, text)
+            if new_text != text:
+                logger.debug("Cortesía eliminada: '%s' → '%s'", text, new_text)
+                text = new_text.strip()
+                changed = True
+                break
+        if not changed:
+            break
     return text
 
 
@@ -163,7 +192,7 @@ def normalize(raw: str, config=None) -> str:
     """
     if not raw:
         return raw
-    text = raw.lower().strip()
+    text = raw.lower().strip().rstrip("?!.,")
     if config is not None:
         text = _apply_user_aliases(text, config)
     text = _apply_phonetic(text)

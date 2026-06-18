@@ -13,6 +13,9 @@ import logging
 import re
 
 from core.intent import IntentSpec
+
+_RE_NUM = re.compile(r'\d+(?:[.,]\d+)?')
+_MAX_REM_MINS = 1440  # 24 horas
 from core.matchers import all_of, contains_any
 from core.skill import Skill
 
@@ -36,12 +39,13 @@ def _recordar_minutos(ctx, m):
     mensaje = (partes[0].replace("recuérdame", "").replace("recuerdame", "")
                .replace("recuerda", "").strip())
     resto = partes[1]
-    try:
-        mins = float("".join(c for c in resto if c.isdigit() or c == ".") or "5")
-    except ValueError:
-        mins = 5.0
+    num_match = _RE_NUM.search(resto)
+    mins = float(num_match.group().replace(",", ".")) if num_match else 5.0
     if mins <= 0:
         mins = 5.0
+    if mins > _MAX_REM_MINS:
+        ctx.say("Son demasiados minutos. Lo programo para 24 horas.")
+        mins = float(_MAX_REM_MINS)
     ctx.scheduler.schedule_in(mensaje, mins, kind="recordatorio")
     ctx.say(ctx.persona.recordatorio_creado(mensaje, mins))
     ctx.registrar_actividad(f"Programó recordatorio: {mensaje}")

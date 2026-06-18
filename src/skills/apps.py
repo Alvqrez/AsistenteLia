@@ -121,7 +121,8 @@ class AppsSkill(Skill):
             IntentSpec(
                 name="apps.abrir", priority=270,
                 matcher=after_trigger(("abre ", "abrir ", "lanza ", "lanzar ",
-                                       "inicia ", "arranca ", "arrancar ")),
+                                       "inicia ", "arranca ", "arrancar ",
+                                       "pon ", "ponme ")),
                 handler=_abrir,
                 description="Abre una aplicación o sitio web",
                 aliases=("abre spotify",),
