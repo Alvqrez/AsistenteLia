@@ -110,8 +110,12 @@ class SystemSkill(Skill):
                        description="Modo programación: VS Code, GitHub y Spotify",
                        aliases=("a programar", "modo código"),
                        examples=("a programar", "modo código", "quiero codear")),
+            # "macro"/"alias": "crea macro modo trabajo" o "borra macro modo
+            # trabajo" contienen "modo trabajo"; sin excluirlos, gestionar una
+            # macro así nombrada activaba el modo estudio en su lugar.
             IntentSpec(name="system.modo_estudio", priority=185,
-                       matcher=without(contains_word_any(_SINONIMOS_ESTUDIO), ("abre", "tarea", "pendiente", "anota")),
+                       matcher=without(contains_word_any(_SINONIMOS_ESTUDIO),
+                                       ("abre", "tarea", "pendiente", "anota", "macro", "alias")),
                        handler=_modo_estudio,
                        description="Modo estudio: ChatGPT y WhatsApp",
                        aliases=("a estudiar", "modo estudio"),

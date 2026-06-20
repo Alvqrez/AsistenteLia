@@ -13,6 +13,20 @@ Contiene la infraestructura desacoplada que sustituye al antiguo god-object
     LiaKernel       — orquestador delgado que ensambla todo.
 """
 
+# UTF-8 en consola, garantizado para CUALQUIER entry point (main, smoke tests,
+# webhook, exe empaquetado). Muchos módulos imprimen emojis/acentos/flechas; en
+# una consola cp1252 (Windows) eso lanzaba UnicodeEncodeError y abortaba el
+# arranque. Antes esto solo se hacía en main.py, así que cualquier camino que no
+# pasara por main (p.ej. los smoke tests al instanciar el kernel) era frágil.
+# Como todo entry point importa algo de `core`, este es el lugar central y DRY.
+import sys as _sys
+
+for _stream in (_sys.stdout, _sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")
+    except Exception:
+        pass  # stdout puede ser None en modo windowed/frozen: se ignora seguro.
+
 from core.event_bus import EventBus, Event
 from core.intent import IntentSpec, IntentMatch
 from core.router import IntentRouter

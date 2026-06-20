@@ -148,6 +148,17 @@ CASOS = [
     ("busca comando git", "control.buscar_comando"),
     ("qué comandos tienes", "control.ayuda"),
     ("qué puedes hacer", "control.ayuda"),
+    # ── Regresión: meta-comandos (alias/macro) que envuelven otros verbos.
+    # Antes quedaban "secuestrados" por apps.abrir / ws.* / system.* y la
+    # feature era inalcanzable. Auditoría 2026-06: precedencia + guardas.
+    ("crea alias fluter para abre el proyecto de flutter", "aliases.crear"),
+    ("cuando diga mi correo ejecuta abre gmail", "aliases.crear"),
+    ("crea macro modo trabajo", "macros.crear"),
+    ("crea una macro que abra vs code y spotify", "macros.crear_inline"),
+    ("ejecuta macro modo trabajo", "macros.ejecutar"),
+    ("borra macro modo trabajo", "macros.borrar"),
+    ("qué hiciste hoy", "history.hoy"),          # no lo secuestra resumen.dia
+    ("qué hice hoy", "resumen.dia"),             # dueño oficial del alias
 ]
 
 fallos = 0

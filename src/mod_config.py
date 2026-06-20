@@ -3,6 +3,7 @@
 import os
 import json
 import tempfile
+import threading
 
 
 # Valores por defecto razonables
@@ -42,6 +43,10 @@ class ConfigManager:
         os.makedirs(_data_dir, exist_ok=True)
         self._config_path = os.path.join(_data_dir, "lia_config.json")
         self._config      = dict(_DEFAULTS)
+        # set() lo llaman varios hilos (scheduler, briefing, handlers de voz y de
+        # la GUI). El RLock evita lecturas/escrituras intercaladas del dict y
+        # actualizaciones perdidas al persistir. Reentrante porque set() lee.
+        self._lock        = threading.RLock()
         self._cargar()
 
     # ════════════════════════════════════════════════════════
@@ -87,20 +92,24 @@ class ConfigManager:
 
     def get(self, clave: str, default=None):
         """Retorna el valor de una clave de configuración."""
-        return self._config.get(clave, default if default is not None
-                                else _DEFAULTS.get(clave))
+        with self._lock:
+            return self._config.get(clave, default if default is not None
+                                    else _DEFAULTS.get(clave))
 
     def set(self, clave: str, valor):
         """Actualiza una clave y persiste el cambio."""
-        self._config[clave] = valor
-        self._guardar()
+        with self._lock:
+            self._config[clave] = valor
+            self._guardar()
         print(f"⚙️  Config: {clave} = {valor}")
 
     def mostrar_todas(self):
         """Imprime toda la configuración en consola."""
+        with self._lock:
+            items = list(self._config.items())
         print("\n⚙️  CONFIGURACIÓN ACTUAL DE LIA")
         print("=" * 50)
-        for k, v in self._config.items():
+        for k, v in items:
             print(f"  {k:<35} : {v}")
         print("=" * 50)
 

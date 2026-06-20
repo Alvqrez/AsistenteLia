@@ -57,6 +57,8 @@ package-lock.json
 
 # Logs
 *.log
+# logs rotados por RotatingFileHandler: lia.log.1, lia.log.2, ...
+*.log.*
 .logs/
 
 # Proyecto específico - datos locales de usuario

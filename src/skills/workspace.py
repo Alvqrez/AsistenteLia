@@ -7,7 +7,7 @@ workspace.py — Contexto de trabajo: proyecto activo, ejecutar, abrir/cerrar lo
 from __future__ import annotations
 
 from core.intent import IntentSpec
-from core.matchers import contains_any
+from core.matchers import contains_any, without
 from core.skill import Skill
 
 
@@ -38,9 +38,14 @@ class WorkspaceSkill(Skill):
 
     def intents(self, ctx):
         return [
+            # "macro"/"alias" excluidos: "ejecuta macro X" debe llegar a
+            # macros.ejecutar (390), no quedar capturado aquí por la subcadena
+            # "ejecuta". Sin esta guarda la ejecución de macros era inalcanzable.
             IntentSpec(name="ws.ejecutar", priority=130,
-                       matcher=contains_any(("ejecuta", "ejecutar el proyecto",
-                                             "corre el proyecto", "inicia el proyecto")),
+                       matcher=without(
+                           contains_any(("ejecuta", "ejecutar el proyecto",
+                                         "corre el proyecto", "inicia el proyecto")),
+                           ("macro", "alias")),
                        handler=_ejecutar,
                        description="Ejecuta el proyecto activo",
                        aliases=("ejecuta", "corre el proyecto"),
@@ -73,8 +78,13 @@ class WorkspaceSkill(Skill):
                        description="Cierra todo lo que Lia abrió en esta sesión",
                        aliases=("abortar",),
                        examples=("abortar",)),
+            # "alias"/"macro" excluidos: "crea alias X para abre el proyecto Y"
+            # contiene "abre el proyecto", pero debe llegar a aliases.crear (360),
+            # no abrir un proyecto literal. Misma idea para definiciones de macro.
             IntentSpec(name="ws.abrir_proyecto", priority=210,
-                       matcher=contains_any(("abre el proyecto", "abrir proyecto", "proyecto activo")),
+                       matcher=without(
+                           contains_any(("abre el proyecto", "abrir proyecto", "proyecto activo")),
+                           ("alias", "macro")),
                        handler=_abrir_proyecto,
                        description="Abre un proyecto conocido y lo deja activo",
                        aliases=("abre el proyecto lia",),

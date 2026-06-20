@@ -1,5 +1,5 @@
 +==============================================================+
-|             ASISTENTE LIA  v5.1  —  141 comandos             |
+|             ASISTENTE LIA  v5.1  —  143 comandos             |
 +==============================================================+
 |  APLAUSOS                                                    |
 |    1 aplauso   ->  Modo Estudio                              |
@@ -27,15 +27,13 @@
 |  "crea carpeta proyectos en escritorio"                      |
 |      Crea una carpeta nueva donde indiques                   |
 |                                                              |
-|  -- AUTOMATIZACION ----------------------------------------  |
+|  -- AUTOMATIZACIÓN ----------------------------------------  |
 |  "abre entorno flutter"                                      |
 |      Abre VS Code, Android Studio y el emulador Android      |
 |  "abre mi entorno de trabajo"                                |
 |      Abre VS Code, Spotify, GitHub y la terminal de una vez  |
 |  "abre entorno web"                                          |
 |      Abre VS Code, Chrome y localhost para desarrollo web    |
-|                                                              |
-|  -- AUTOMATIZACIÓN ----------------------------------------  |
 |  "borra macro modo trabajo"                                  |
 |      Borra una macro guardada                                |
 |  "crea macro modo trabajo"                                   |
@@ -54,6 +52,8 @@
 |      Crea un alias personal: frase corta que Lia expande automáticamente|
 |  "mis aliases"                                               |
 |      Lista todos los aliases personales configurados         |
+|  "qué no entendiste"                                         |
+|      Sugiere aliases nuevos a partir de lo que Lia no entendió|
 |                                                              |
 |  -- CONTEXTO ----------------------------------------------  |
 |  "abortar"                                                   |
@@ -205,7 +205,7 @@
 |      Fija el volumen del sistema a un porcentaje             |
 |                                                              |
 |  -- PRODUCTIVIDAD -----------------------------------------  |
-|  "qué hice hoy"                                              |
+|  "qué hiciste hoy"                                           |
 |      Muestra las actividades registradas hoy                 |
 |  "repite el último comando"                                  |
 |      Repite el último comando ejecutado en esta sesión       |
@@ -282,6 +282,9 @@
 |      Maximiza una ventana por nombre                         |
 |  "minimiza spotify"                                          |
 |      Minimiza una ventana por nombre                         |
+|  "rendimiento de lia"                                        |
+|      Reporta los recursos que consume Lia (RAM, CPU, hilos, uptime)|
+|      tambien: "cuánto consumes"                              |
 |  "uso de cpu"                                                |
 |      Porcentaje de uso del CPU en este momento               |
 |  "salud del disco"                                           |

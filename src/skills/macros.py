@@ -312,9 +312,13 @@ class MacrosSkill(Skill):
 
     def intents(self, ctx):
         return [
+            # Precedencia alta (igual que aliases.crear): meta-comando que
+            # envuelve otros comandos ("crea una macro que abra vs code y
+            # spotify"). Debe ganar a los verbos genéricos que la parte envuelta
+            # dispararía. starts_with anclado → sin falsos positivos.
             IntentSpec(
                 name="macros.crear_inline",
-                priority=375,
+                priority=46,
                 matcher=starts_with((
                     "crea una macro que ", "crea una macros que ",
                     "crear una macro que ", "haz una macro que ",
@@ -331,7 +335,7 @@ class MacrosSkill(Skill):
             ),
             IntentSpec(
                 name="macros.crear",
-                priority=380,
+                priority=47,  # ver nota de precedencia en macros.crear_inline
                 matcher=starts_with((
                     "crea macro ", "nueva macro ", "crea una macro ",
                     "crear macro ", "agregar macro ",

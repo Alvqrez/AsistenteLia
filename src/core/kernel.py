@@ -51,6 +51,7 @@ from mod_voz import VozEngine
 import mod_sonidos
 
 from services.command_history import CommandHistory
+from services.unrecognized_log import UnrecognizedLog
 from services.webhook_server import WebhookServer
 from services.desktop.base import NullDesktopService
 from services.desktop.windows import WindowsDesktopService
@@ -176,9 +177,17 @@ class LiaKernel:
         # Historial de comandos de la sesión (para "repite el último", etc.)
         self.command_history = CommandHistory(self.bus)
         self.ctx.attach_service("command_history", self.command_history)
+
+        # Registro de comandos NO reconocidos: alimenta el aprendizaje de aliases
+        # (las frases que más se repiten sin entenderse son candidatas a alias).
+        self.unrecognized = UnrecognizedLog(_DATA_DIR)
+        self.ctx.attach_service("unrecognized", self.unrecognized)
         problemas = self.commands.validate()
         if problemas:
-            print(f"   ⚠ Validación de comandos: {len(problemas)} advertencia(s) "
+            # ASCII puro: este print va a la consola, que en Windows puede ser
+            # cp1252; un carácter como "⚠" lanzaba UnicodeEncodeError y abortaba
+            # el arranque en terminales no reconfiguradas a UTF-8.
+            print(f"   [!] Validacion de comandos: {len(problemas)} advertencia(s) "
                   "(detalle en data/lia.log)")
 
         # ── Servidor webhook (integración con sistemas externos) ──────────
@@ -293,6 +302,12 @@ class LiaKernel:
 
     # ── Fallback de intención no reconocida ───────────────────────────────
     def _on_unhandled(self, cmd_l: str) -> None:
+        # Persistir antes de responder: así Lia "aprende" qué frases falla y
+        # puede sugerir aliases nuevos ("qué no entendiste").
+        try:
+            self.unrecognized.record(cmd_l)
+        except Exception as ex:
+            logger.debug("No se pudo registrar comando no reconocido: %s", ex)
         mod_sonidos.sonido_error()
         self.ctx.say(self.persona.no_entendi())
 

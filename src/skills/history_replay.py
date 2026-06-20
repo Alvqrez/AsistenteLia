@@ -143,19 +143,22 @@ class HistoryReplaySkill(Skill):
                 aliases=("repite el último comando",),
                 examples=("repite el último comando",),
             ),
+            # No incluye "qué hice hoy" ni "resumen de hoy": ambas las captura
+            # resumen.dia (prioridad 690 < 700), que es el dueño oficial de ese
+            # alias. Aquí quedan solo las variantes que de verdad llegan a esta
+            # intención, para no declarar triggers muertos ni un alias duplicado.
             IntentSpec(
                 name="history.hoy",
                 priority=700,
                 matcher=contains_any((
-                    "qué hice hoy", "que hice hoy",
                     "qué hiciste hoy", "que hiciste hoy",
-                    "resumen de hoy", "actividad de hoy",
+                    "actividad de hoy", "actividades de hoy",
                     "qué hemos hecho hoy", "que hemos hecho hoy",
                 )),
                 handler=_que_hice_hoy,
                 description="Muestra las actividades registradas hoy",
-                aliases=("qué hice hoy",),
-                examples=("qué hice hoy",),
+                aliases=("qué hiciste hoy",),
+                examples=("qué hiciste hoy",),
             ),
             IntentSpec(
                 name="history.semana",

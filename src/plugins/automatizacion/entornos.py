@@ -91,7 +91,9 @@ def _entorno_web(ctx, m):
 
 class EntornosSkill(Skill):
     name = "entornos"
-    category = "automatizacion"
+    # Acentuada para coincidir con MacrosSkill y no fragmentar el help en dos
+    # categorías casi idénticas ("automatizacion" vs "automatización").
+    category = "automatización"
 
     def intents(self, ctx):
         return [

@@ -29,6 +29,12 @@ logger = logging.getLogger("lia.voz")
 
 _SENTINEL = object()
 
+# Cota de la cola TTS: con una cola ilimitada, una ráfaga de respuestas (p.ej.
+# un modo que abre varias apps, o un bug que llama say() en bucle) podía
+# acumular decenas de frases y dejar a Lia "hablando del pasado" durante
+# segundos, además de crecer en memoria. 32 es holgado para uso normal.
+_MAX_QUEUE = 32
+
 # ── Catálogo de voces disponibles ────────────────────────────────────────────
 VOCES = {
     "dalia":   "es-MX-DaliaNeural",    # default — mexicana, clara y natural
@@ -65,7 +71,7 @@ class VozEngine:
         self._voice  = VOCES.get(voice.lower(), voice)
         self._rate   = rate
         self._volume = volume
-        self._queue  = queue.Queue()
+        self._queue  = queue.Queue(maxsize=_MAX_QUEUE)
 
         self._hablando        = False
         self._silencioso      = False
@@ -305,7 +311,21 @@ class VozEngine:
     def decir(self, texto: str):
         if not texto:
             return
-        self._queue.put(str(texto))
+        item = str(texto)
+        # No bloquear nunca al productor (los handlers corren en hilos de UI/STT).
+        try:
+            self._queue.put_nowait(item)
+        except queue.Full:
+            # Cola saturada: descarta la frase pendiente más antigua y encola la
+            # nueva. Prioriza lo más reciente y mantiene la latencia de voz baja.
+            try:
+                self._queue.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                self._queue.put_nowait(item)
+            except queue.Full:
+                logger.debug("Cola TTS saturada; se descartó: %s", item[:40])
 
     def vaciar(self):
         """Vacía la cola de TTS pendiente."""
@@ -337,5 +357,11 @@ class VozEngine:
                 logger.debug("No se pudo detener pyttsx3: %s", ex)
 
     def detener(self):
-        self._queue.put(_SENTINEL)
+        # Vaciar primero garantiza espacio para el centinela en la cola acotada
+        # (put_nowait no bloquea aunque el consumidor ya no esté drenando).
+        self.vaciar()
+        try:
+            self._queue.put_nowait(_SENTINEL)
+        except queue.Full:
+            pass
         self._thread.join(timeout=3)

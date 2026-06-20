@@ -125,6 +125,24 @@ def _borrar_con_frase(ctx, frase: str) -> None:
     ctx.registrar_actividad(f"Alias eliminado: '{frase}'")
 
 
+def _sugerir_aliases(ctx, m):
+    """Lee el registro de comandos no reconocidos y sugiere los más repetidos
+    como candidatos a alias nuevo (Lia 'aprende' de lo que falla)."""
+    log = ctx.service("unrecognized")
+    if log is None:
+        ctx.say("Aún no llevo registro de comandos sin entender.")
+        return
+    top = log.top(n=3, min_count=2)
+    if not top:
+        ctx.say("Por ahora entendí todo lo que me pediste. No hay nada que sugerir.")
+        return
+    frases = ", ".join(f"'{frase}' ({n} veces)" for frase, n in top)
+    ctx.say(
+        f"Lo que más te fallé en entender: {frases}. "
+        "Si quieres, di: crea alias, seguido de esa frase y el comando que debería ejecutar."
+    )
+
+
 # ── Skill ─────────────────────────────────────────────────────────────────────
 
 class AliasesSkill(Skill):
@@ -135,7 +153,14 @@ class AliasesSkill(Skill):
         return [
             IntentSpec(
                 name="aliases.crear",
-                priority=360,
+                # Precedencia alta deliberada: es un meta-comando que ENVUELVE
+                # otro comando ("crea alias X para abre el proyecto Y"). Si se
+                # evaluara después de los verbos genéricos (apps.abrir,
+                # ws.abrir_proyecto, internet.rutina...), la parte envuelta los
+                # dispararía y el alias nunca se crearía. Su matcher starts_with
+                # con prefijos largos y anclados ("crea alias ", "cuando diga ")
+                # no produce falsos positivos, así que ganar primero es seguro.
+                priority=45,
                 matcher=starts_with((
                     "crea alias ",
                     "nuevo alias ",
@@ -175,5 +200,24 @@ class AliasesSkill(Skill):
                 description="Elimina un alias personal",
                 aliases=("borra alias fluter",),
                 examples=("borra alias fluter",),
+            ),
+            IntentSpec(
+                name="aliases.sugerir",
+                priority=705,
+                # No se incluye "comandos no reconocidos": la subcadena
+                # "comandos" la captura control.ayuda (prioridad 40) y sería un
+                # trigger muerto. Las frases de abajo no chocan con nada.
+                matcher=contains_any((
+                    "qué no entendiste", "que no entendiste",
+                    "qué no entiendes", "que no entiendes",
+                    "qué no captaste", "que no captaste",
+                    "qué te fallé", "que te falle",
+                    "sugiéreme aliases", "sugiere aliases",
+                    "sugiere un alias", "sugiéreme un alias",
+                )),
+                handler=_sugerir_aliases,
+                description="Sugiere aliases nuevos a partir de lo que Lia no entendió",
+                aliases=("qué no entendiste",),
+                examples=("qué no entendiste", "sugiere aliases"),
             ),
         ]
