@@ -31,6 +31,7 @@ from core.event_bus import Event, EventBus
 from core.registry import CommandRegistry
 from core.router import IntentRouter
 from core.skill import SkillRegistry
+from core.suggester import CommandSuggester
 
 # Servicios legacy reutilizados como capa de implementación.
 from mod_audio import ClapDetector
@@ -174,6 +175,11 @@ class LiaKernel:
         self.commands = CommandRegistry(self.router)
         self.ctx.attach_service("commands", self.commands)
 
+        # Sugeridor offline: ante un comando no reconocido, propone el más cercano
+        # ("¿quisiste decir...?"). Cero IA; reutiliza aliases/ejemplos del registry.
+        self.suggester = CommandSuggester(self.commands)
+        self.ctx.attach_service("suggester", self.suggester)
+
         # Historial de comandos de la sesión (para "repite el último", etc.)
         self.command_history = CommandHistory(self.bus)
         self.ctx.attach_service("command_history", self.command_history)
@@ -301,6 +307,12 @@ class LiaKernel:
         self.bus.subscribe(Event.COMMAND_EXECUTED, _on_command_executed)
 
     # ── Fallback de intención no reconocida ───────────────────────────────
+    # Palabras con las que el usuario acepta la sugerencia ofrecida. Las de
+    # rechazo/cancelación ya las maneja PendingAction.cancel_words en el ctx.
+    _AFIRMATIVOS = ("si", "sí", "claro", "dale", "hazlo", "ok", "okay",
+                    "correcto", "exacto", "eso", "afirmativo", "adelante",
+                    "sale", "por favor")
+
     def _on_unhandled(self, cmd_l: str) -> None:
         # Persistir antes de responder: así Lia "aprende" qué frases falla y
         # puede sugerir aliases nuevos ("qué no entendiste").
@@ -308,6 +320,33 @@ class LiaKernel:
             self.unrecognized.record(cmd_l)
         except Exception as ex:
             logger.debug("No se pudo registrar comando no reconocido: %s", ex)
+
+        # Inteligencia offline: ¿hay un comando registrado MUY parecido? Si lo
+        # hay, lo ofrecemos en vez de rendirnos. El usuario confirma con "sí"
+        # (se ejecuta el comando sugerido) o reformula (se rutea como nuevo).
+        try:
+            sugerencia = self.suggester.suggest(cmd_l)
+        except Exception as ex:
+            logger.debug("Sugeridor falló: %s", ex)
+            sugerencia = None
+
+        if sugerencia is not None:
+            frase = sugerencia.phrase
+
+            def _resolver_sugerencia(resp: str) -> None:
+                low = resp.lower().strip()
+                if any(w in low for w in self._AFIRMATIVOS):
+                    self.handle_text(frase)
+                elif low in ("no", "nop", "para nada", "negativo"):
+                    self.ctx.say("Entendido.")
+                else:
+                    # El usuario reformuló: tratar la respuesta como comando nuevo.
+                    self.handle_text(resp)
+
+            mod_sonidos.sonido_escuchando()
+            self.ctx.ask(self.persona.quizas_quisiste(frase), _resolver_sugerencia)
+            return
+
         mod_sonidos.sonido_error()
         self.ctx.say(self.persona.no_entendi())
 

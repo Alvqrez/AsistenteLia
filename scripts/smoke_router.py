@@ -159,6 +159,13 @@ CASOS = [
     ("borra macro modo trabajo", "macros.borrar"),
     ("qué hiciste hoy", "history.hoy"),          # no lo secuestra resumen.dia
     ("qué hice hoy", "resumen.dia"),             # dueño oficial del alias
+    # Spotify: búsqueda y reproducción por nombre (no debe abrir el navegador)
+    ("busca queen en spotify", "musica.spotify_buscar"),
+    ("busca bohemian rhapsody en spotify", "musica.spotify_buscar"),
+    ("pon bohemian rhapsody en spotify", "musica.spotify_poner"),
+    ("ponme reggaeton en spotify", "musica.spotify_poner"),
+    ("pon bohemian rhapsody de queen en spotify", "musica.spotify_cancion_artista"),
+    ("reproduce flowers de miley cyrus en spotify", "musica.spotify_cancion_artista"),
 ]
 
 fallos = 0

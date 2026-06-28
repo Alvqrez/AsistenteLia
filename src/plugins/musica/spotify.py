@@ -15,6 +15,10 @@ from __future__ import annotations
 
 import ctypes
 import logging
+import os
+import threading
+import time
+import urllib.parse
 
 from core.intent import IntentSpec
 from core.matchers import contains_any, regex
@@ -34,6 +38,8 @@ _VK_MEDIA_PREV = 0xB1
 _VK_VOLUME_UP = 0xAF
 _VK_VOLUME_DOWN = 0xAE
 _KEYEVENTF_KEYUP = 0x0002
+_VK_TAB = 0x09
+_VK_RETURN = 0x0D
 
 
 def _tecla(vk: int, veces: int = 1) -> None:
@@ -131,12 +137,140 @@ def _cancion_actual(ctx, m):
         ctx.say("Spotify está abierto pero no está reproduciendo nada.")
 
 
+# ── Búsqueda y reproducción por nombre ───────────────────────────────────────
+
+def _hwnd_spotify() -> int | None:
+    """Devuelve el hwnd de la ventana principal de Spotify, o None."""
+    if psutil is None:
+        return None
+    user32 = ctypes.windll.user32
+    resultado: list[int] = []
+
+    @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+    def _enum(hwnd, _):
+        if not user32.IsWindowVisible(hwnd):
+            return True
+        pid = ctypes.c_ulong()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        try:
+            if psutil.Process(pid.value).name().lower() == "spotify.exe":
+                largo = user32.GetWindowTextLengthW(hwnd)
+                if largo > 3:
+                    resultado.append(hwnd)
+                    return False
+        except Exception:
+            pass
+        return True
+
+    user32.EnumWindows(_enum, 0)
+    return resultado[0] if resultado else None
+
+
+def _abrir_busqueda_spotify(query: str) -> None:
+    encoded = urllib.parse.quote(query)
+    os.startfile(f"spotify:search:{encoded}")
+
+
+def _intentar_reproducir_primero() -> None:
+    """Espera a que Spotify cargue los resultados e intenta reproducir el primero."""
+    time.sleep(2.0)
+    hwnd = _hwnd_spotify()
+    if not hwnd:
+        return
+    user32 = ctypes.windll.user32
+    try:
+        user32.SetForegroundWindow(hwnd)
+        time.sleep(0.4)
+        # Tab navega al primer resultado de la sección Songs; Enter lo reproduce.
+        _tecla(_VK_TAB)
+        time.sleep(0.15)
+        _tecla(_VK_RETURN)
+    except Exception as ex:
+        logger.debug("No se pudo auto-reproducir en Spotify: %s", ex)
+
+
+def _buscar_spotify(ctx, m):
+    query = m.slot("query", "").strip()
+    if not query:
+        ctx.say("¿Qué quieres buscar en Spotify?")
+        return
+    _abrir_busqueda_spotify(query)
+    ctx.say(f"Buscando {query} en Spotify.")
+    ctx.registrar_actividad(f"Búsqueda en Spotify: {query}")
+
+
+def _poner_spotify(ctx, m):
+    query = m.slot("query", "").strip()
+    if not query:
+        ctx.say("¿Qué canción quieres poner en Spotify?")
+        return
+    _abrir_busqueda_spotify(query)
+    ctx.say(f"Buscando {query} en Spotify.")
+    threading.Thread(target=_intentar_reproducir_primero, daemon=True).start()
+    ctx.registrar_actividad(f"Poner en Spotify: {query}")
+
+
+def _poner_cancion_artista_spotify(ctx, m):
+    cancion = m.slot("cancion", "").strip()
+    artista = m.slot("artista", "").strip()
+    if not cancion:
+        ctx.say("¿Qué canción quieres poner en Spotify?")
+        return
+    query = f"{cancion} {artista}".strip()
+    _abrir_busqueda_spotify(query)
+    ctx.say(f"Buscando {cancion} de {artista} en Spotify.")
+    threading.Thread(target=_intentar_reproducir_primero, daemon=True).start()
+    ctx.registrar_actividad(f"Poner en Spotify: {query}")
+
+
 class SpotifySkill(Skill):
     name = "spotify"
     category = "musica"
 
     def intents(self, ctx):
         return [
+            # Prioridad 85–87: más específicos que files.buscar (250) y apps.abrir (270).
+            IntentSpec(
+                name="musica.spotify_cancion_artista", priority=85,
+                matcher=regex(
+                    r"(?:pon|ponme|reproduce)\s+(?P<cancion>.+?)\s+de\s+(?P<artista>.+?)\s+en\s+spotify"
+                ),
+                handler=_poner_cancion_artista_spotify,
+                description="Busca una canción de un artista concreto en Spotify y la reproduce",
+                aliases=("pon bohemian rhapsody de queen en spotify",),
+                examples=(
+                    "pon bohemian rhapsody de queen en spotify",
+                    "reproduce flowers de miley cyrus en spotify",
+                ),
+            ),
+            IntentSpec(
+                name="musica.spotify_poner", priority=86,
+                matcher=regex(
+                    r"(?:pon|ponme|reproduce)\s+(?P<query>.+?)\s+en\s+spotify"
+                ),
+                handler=_poner_spotify,
+                description="Busca una canción o álbum en Spotify y reproduce el primer resultado",
+                aliases=("pon bohemian rhapsody en spotify",),
+                examples=(
+                    "pon bohemian rhapsody en spotify",
+                    "ponme reggaeton en spotify",
+                    "reproduce lo que sea en spotify",
+                ),
+            ),
+            IntentSpec(
+                name="musica.spotify_buscar", priority=87,
+                matcher=regex(
+                    r"(?:busca|buscar|encuentra)\s+(?P<query>.+?)\s+en\s+spotify"
+                ),
+                handler=_buscar_spotify,
+                description="Busca una canción, artista o álbum en Spotify (sin auto-reproducir)",
+                aliases=("busca queen en spotify",),
+                examples=(
+                    "busca queen en spotify",
+                    "busca bohemian rhapsody en spotify",
+                    "encuentra bad bunny en spotify",
+                ),
+            ),
             IntentSpec(
                 name="musica.volumen_a", priority=92,
                 matcher=regex(r"volumen\s+al?\s+(?P<pct>\d{1,3})"),

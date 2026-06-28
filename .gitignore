@@ -65,6 +65,7 @@ package-lock.json
 data/lia.log
 lia.log
 data/*.json
+data/unrecognized_commands.txt
 data/*.bak
 lia_config.json
 lia_historial.json

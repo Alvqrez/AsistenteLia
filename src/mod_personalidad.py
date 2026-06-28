@@ -121,6 +121,18 @@ class Persona:
             f"Mi reconocimiento de voz tiene sus limites, {self.nombre}. Repitalo, por favor.",
         ])
 
+    def quizas_quisiste(self, frase):
+        """Sugerencia de comando cercano cuando algo no se reconoce.
+        Siempre verbal (es una pregunta), pero corta en modo minimal."""
+        return self._corto(
+            [f"¿Queria '{frase}'? Diga si."],
+            lambda: self._r([
+                f"No le he entendido del todo, {self.nombre}. ¿Queria '{frase}'? Diga si.",
+                f"Eso no lo reconozco, {self.nombre}, pero se parece a '{frase}'. ¿Lo hago? Diga si.",
+                f"¿Quiso decir '{frase}', {self.nombre}? Confirme con un si.",
+            ]),
+        )
+
     def sin_conexion(self):
         # Error: va completo siempre, igual que no_entendi/error_generico (ver nota arriba).
         return self._r([
